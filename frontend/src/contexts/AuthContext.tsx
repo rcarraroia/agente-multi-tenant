@@ -38,7 +38,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
 
         // 2. Listen for auth changes (Transparent SSO)
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: string, session: Session | null) => {
             setSession(session);
             setUser(session?.user ?? null);
             if (session) {
