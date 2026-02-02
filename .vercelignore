@@ -1,0 +1,30 @@
+# Vercel Ignore - Agente Multi-Tenant
+
+# Ignorar metadados de IA
+.agent/
+.context/
+.github/
+.cursorrules/
+CLAUDE.md
+AGENTS.md
+.spec/
+.kiro/
+
+# Ignorar Ambiente
+.env
+.env.*
+.venv/
+venv/
+__pycache__/
+
+# Documentação Interna
+docs/
+backend/
+implementation_plan.md
+task.md
+
+# Builds e temporários
+dist/
+build/
+*.tmp
+*.log

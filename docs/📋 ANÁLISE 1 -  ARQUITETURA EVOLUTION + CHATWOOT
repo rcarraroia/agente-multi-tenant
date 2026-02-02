@@ -1,0 +1,1456 @@
+Excelente! Agora tenho informações suficientes para compilar os documentos técnicos. Vou estruturar as 3 análises completas:
+
+📋 ANÁLISE 1: ARQUITETURA EVOLUTION + CHATWOOT
+1. Contexto
+O sistema multiagente precisa integrar WhatsApp via Evolution API com Chatwoot para permitir handoff humano quando necessário. A questão central é: qual arquitetura de integração escolher?
+
+2. Pesquisa Técnica
+2.1 O que é Evolution API?
+Evolution API é uma API REST open-source para integração WhatsApp que:
+
+Suporta múltiplas instâncias WhatsApp simultâneas
+Usa Baileys (protocolo WhatsApp Web não-oficial)
+Oferece webhooks para eventos em tempo real
+Possui integração nativa com Chatwoot
+Fonte: Evolution API Introduction
+
+2.2 O que é Chatwoot?
+Chatwoot é uma plataforma open-source de atendimento ao cliente que:
+
+Centraliza conversas de múltiplos canais
+Suporta Agent Bots para automação
+Possui API completa para criar conversas e mensagens
+Implementa handoff bot → humano via status de conversa
+Fonte: Chatwoot API Documentation
+
+2.3 Integração Nativa Evolution → Chatwoot
+A Evolution API oferece integração nativa configurável via:
+
+Endpoint: POST /chatwoot/set/{{instance}}
+
+Payload:
+
+{
+  "enabled": true,
+  "account_id": "123",
+  "token": "chatwoot_admin_token",
+  "url": "https://chatwoot.seu-dominio.com",
+  "sign_msg": true,
+  "reopen_conversation": false,
+  "conversation_pending": true,
+  "import_contacts": true,
+  "name_inbox": "WhatsApp Instance"
+}
+
+O que acontece automaticamente:
+
+Evolution cria inbox automaticamente no Chatwoot
+Mensagens recebidas → criadas no Chatwoot
+Mensagens enviadas do Chatwoot → encaminhadas via Evolution
+Contatos importados automaticamente
+Fontes:
+
+Evolution API Chatwoot Integration
+Set Chatwoot Documentation
+2.4 Webhooks Evolution API
+Webhooks disponíveis:
+
+Evento	Quando Dispara	Payload Essencial
+QRCODE_UPDATED	QR Code gerado/atualizado	{event, instance, data: {qr}}
+CONNECTION_UPDATE	Status conexão muda	{event, instance, data: {state, statusReason}}
+MESSAGES_UPSERT	Nova mensagem recebida	{event, instance, data: {key, message}}
+MESSAGES_UPDATE	Mensagem atualizada	{event, instance, data: {key, update}}
+Fonte: Evolution API Webhooks
+
+2.5 API Chatwoot
+Workflow completo:
+
+Criar Contato:
+
+POST /api/v1/accounts/{account_id}/contacts
+
+Criar Conversa:
+
+POST /api/v1/accounts/{account_id}/conversations
+Body: {source_id, inbox_id, contact_id, message}
+
+Enviar Mensagem:
+
+POST /api/v1/accounts/{account_id}/conversations/{conversation_id}/messages
+
+Handoff Bot → Humano:
+
+Status pending = bot atende
+Status open = humano atende
+Trocar via: PUT /api/v1/accounts/{account_id}/conversations/{conversation_id}
+Webhooks Chatwoot:
+
+message_created - quando agente humano responde
+conversation_status_changed - quando status muda
+conversation_updated - quando conversa atualizada
+Fontes:
+
+Create Conversation API
+Agent Bots Handoff
+3. Análise Comparativa
+Opção A: Evolution → Chatwoot (Integração Nativa Direta)
+Renderizando diagrama...
+
+Como funciona:
+
+Evolution configurado com integração nativa Chatwoot
+TODAS as mensagens fluem automaticamente para Chatwoot
+Nosso backend apenas consulta APIs para monitorar/relatórios
+Prós:
+
+✅ Zero overhead de desenvolvimento inicial
+✅ Mensagens sincronizadas automaticamente
+✅ Menor latência (comunicação direta)
+✅ Simplicidade operacional
+✅ Menos pontos de falha
+Contras:
+
+❌ Pouco controle sobre o fluxo de mensagens
+❌ Difícil aplicar lógica customizada (filtros, roteamento)
+❌ Nosso backend fica "fora do loop" principal
+❌ Bug conhecido: contexto de mensagens citadas perdido (Issue #2065)
+❌ Dependência total da integração nativa (bugs afetam diretamente)
+Quando usar:
+
+Sistema simples onde Chatwoot é o centro de tudo
+Não precisa de lógica complexa de roteamento
+Equipe pequena querendo setup rápido
+Opção B: Backend Centralizado (Orquestração Total)
+Renderizando diagrama...
+
+Como funciona:
+
+Evolution sem integração Chatwoot
+Webhook Evolution → Nosso Backend
+Backend decide quando/como enviar para Chatwoot
+Webhook Chatwoot → Backend → Evolution
+Prós:
+
+✅ Controle total do fluxo
+✅ Lógica customizada (filtros, roteamento, transformações)
+✅ Fácil adicionar analytics/logs
+✅ Pode aplicar rate limiting
+✅ Abstração - trocar Evolution/Chatwoot sem refatoração total
+✅ Multitenancy mais robusto
+Contras:
+
+❌ Desenvolvimento mais complexo
+❌ Maior latência (hop adicional)
+❌ Mais pontos de falha
+❌ Precisa gerenciar fila de mensagens
+❌ Custo de manutenção maior
+Quando usar:
+
+Precisa de lógica complexa de roteamento
+Sistema multicanal além de WhatsApp
+Analytics profundos necessários
+Controle fino sobre dados e privacidade
+Opção C: Híbrido (Integração Nativa + Controle Backend)
+Renderizando diagrama...
+
+Como funciona:
+
+Evolution COM integração nativa Chatwoot (mensagens fluem automaticamente)
+Evolution TAMBÉM envia webhooks para nosso backend
+Backend intercepta eventos importantes (handoff, métricas)
+Backend pode intervir via API Chatwoot quando necessário
+Prós:
+
+✅ Melhor dos dois mundos
+✅ Mensagens fluem automaticamente (integração nativa)
+✅ Backend ainda "vê tudo" via webhooks
+✅ Pode adicionar lógica sem bloquear fluxo principal
+✅ Baixa latência no caminho crítico
+✅ Controle seletivo onde importa
+Contras:
+
+❌ Complexidade moderada de setup
+❌ Precisa gerenciar dois canais de eventos
+❌ Risco de mensagens duplicadas se não implementado corretamente
+❌ Depuração mais difícil (múltiplos caminhos)
+Quando usar:
+
+Quer simplicidade da integração nativa
+MAS precisa de analytics/controle em pontos específicos
+Sistema crescendo gradualmente em complexidade
+4. Tabela Comparativa Final
+Critério	Opção A (Nativa)	Opção B (Backend)	Opção C (Híbrido)
+Complexidade	🟢 Baixa	🔴 Alta	🟡 Média
+Latência	🟢 Baixa	🔴 Média	🟢 Baixa
+Controle	🔴 Baixo	🟢 Total	🟡 Seletivo
+Manutenção	🟢 Baixa	🔴 Alta	🟡 Média
+Escalabilidade	🟡 Média	🟢 Alta	🟢 Alta
+Custo Dev	🟢 Baixo	🔴 Alto	🟡 Médio
+Flexibilidade	🔴 Baixa	🟢 Máxima	🟡 Alta
+Abstração	🔴 Baixa	🟢 Alta	🟡 Média
+5. Recomendação
+🎯 OPÇÃO C - ARQUITETURA HÍBRIDA
+Justificativa:
+
+Fase 1 (MVP - 0-3 meses):
+
+Use integração nativa para validar produto rapidamente
+Backend monitora via webhooks sem bloquear fluxo
+Time focado em features, não em infraestrutura
+Fase 2 (Crescimento - 3-6 meses):
+
+Backend já está "vendo tudo" via webhooks
+Adicione lógicas específicas (analytics, roteamento) progressivamente
+Sem refatoração grande
+Fase 3 (Escala - 6+ meses):
+
+Se necessário, migre gradualmente para Opção B
+Desligue integração nativa, mantenha webhooks
+Transição suave porque backend já está pronto
+Pragmatismo:
+
+Você mencionou "custo é fator" → Híbrido é custo-efetivo
+"Não over-engineer" → Começa simples, cresce sob demanda
+Multitenancy → Backend monitora por tenant, integração nativa facilita isolamento
+6. Implementação Recomendada
+6.1 Setup Inicial
+Evolution API:
+
+# Criar instância com Chatwoot
+POST /instance/create
+{
+  "instanceName": "tenant_123",
+  "integration": "WHATSAPP-BAILEYS",
+  "webhook": {
+    "url": "https://backend.seu-dominio.com/webhooks/evolution",
+    "events": ["QRCODE_UPDATED", "CONNECTION_UPDATE", "MESSAGES_UPSERT"]
+  }
+}
+
+# Configurar Chatwoot na instância
+POST /chatwoot/set/tenant_123
+{
+  "enabled": true,
+  "account_id": "123",
+  "token": "xxx",
+  "url": "https://chatwoot.seu-dominio.com",
+  "conversation_pending": true,
+  "reopen_conversation": false
+}
+
+Backend:
+
+// Webhook Evolution - apenas monitora e registra
+app.post('/webhooks/evolution', async (req, res) => {
+  const { event, instance, data } = req.body;
+  
+  // Registrar evento para analytics
+  await analytics.track(instance, event, data);
+  
+  // Não bloquear - Chatwoot já recebeu via integração nativa
+  res.status(200).send('OK');
+  
+  // Processar async
+  if (event === 'CONNECTION_UPDATE' && data.state === 'close') {
+    await notifyTenant(instance, 'whatsapp_disconnected');
+  }
+});
+
+// Webhook Chatwoot - detectar handoff
+app.post('/webhooks/chatwoot', async (req, res) => {
+  const { event, conversation } = req.body;
+  
+  if (event === 'conversation_status_changed' && conversation.status === 'open') {
+    // Handoff aconteceu - registrar para métricas
+    await metrics.increment('handoffs', { tenant: conversation.tenant_id });
+  }
+  
+  res.status(200).send('OK');
+});
+
+6.2 Handoff Flow
+Renderizando diagrama...
+
+7. Riscos e Mitigações
+Risco	Probabilidade	Impacto	Mitigação
+Bug integração nativa (ex: #2065)	🟡 Média	🔴 Alto	Webhook backend detecta inconsistências, alerta equipe
+Mensagens duplicadas	🟡 Média	🟡 Médio	Deduplicação via message_id no backend
+Chatwoot down	🟢 Baixa	🔴 Alto	Evolution continua funcionando, queue mensagens no backend
+Evolution down	🟡 Média	🔴 Alto	Alertas imediatos, documentação de restore
+Latência webhook backend	🟡 Média	🟢 Baixo	Processamento async, não bloqueia fluxo principal
+8. Referências
+Documentação Oficial:
+
+Evolution API Chatwoot Integration
+Evolution API Webhooks
+Chatwoot Agent Bots
+Chatwoot API Reference
+Implementações Reais:
+
+Evolution + Chatwoot Docker
+Evolution API SDK
+Issues Conhecidos:
+
+Bug: Quoted Message Context Lost
+Inbox Creation Failure
+Update Todos
+ Pesquisar documentações oficiais (Evolution API e Chatwoot)
+ Análise 1: Arquitetura Evolution + Chatwoot (modelos de integração)
+ Analisando modelos de instâncias
+ Análise 3: Fluxo QR Code + Reconexão (implementação técnica)
+ Compilar e formatar os 3 documentos técnicos
+📋 ANÁLISE 2: MODELO DE INSTÂNCIAS EVOLUTION
+1. Contexto
+Sistema multiagente com múltiplos tenants (afiliados). Cada tenant terá seu próprio número WhatsApp conectado. Questão central: Como gerenciar instâncias Evolution API - uma por tenant? Compartilhada? Pool dinâmico?
+
+2. Pesquisa Técnica
+2.1 O que é uma Instância Evolution?
+Uma instância Evolution API representa:
+
+Uma conexão WhatsApp independente
+Um número de telefone específico
+Configurações isoladas (webhooks, integrações)
+Sessão Baileys própria
+Importante: 1 instância = 1 número WhatsApp. Não é possível múltiplos números na mesma instância.
+
+Fonte: Evolution API Introduction
+
+2.2 API de Gerenciamento de Instâncias
+Operação	Endpoint	Payload Exemplo
+Criar	POST /instance/create	{instanceName, integration: "WHATSAPP-BAILEYS"}
+Deletar	DELETE /instance/delete/{instance}	-
+Listar	GET /instance/fetchInstances	-
+Status	GET /instance/connectionState/{instance}	-
+Restart	PUT /instance/restart/{instance}	-
+Criar Instância - Payload Completo:
+
+{
+  "instanceName": "tenant_123_whatsapp",
+  "integration": "WHATSAPP-BAILEYS",
+  "number": "5511999999999",
+  "webhook": {
+    "url": "https://backend.com/webhooks/evolution",
+    "webhook_by_events": true,
+    "events": ["QRCODE_UPDATED", "CONNECTION_UPDATE", "MESSAGES_UPSERT"]
+  }
+}
+
+Fontes:
+
+Create Instance Postman
+Evolution API v2.0 Documentation
+2.3 Limites Técnicos e Performance
+Consumo de Recursos:
+
+Componente	Consumo por Instância
+Memória (Baileys)	~300-500 MB
+Memória (Evolution API)	~512 MB configurado
+CPU	Baixo em idle, picos em envio/recebimento
+Disco	Sessão ~10-50 MB
+Problemas de Performance Identificados:
+
+Baileys usa store in-memory por padrão (consome ~500 MB RAM por instância para histórico completo)
+Memória aumenta gradualmente ao longo de dias (leak reportado em issues)
+Recomendação: usar experimentalStore para reduzir consumo
+Escalabilidade:
+
+Evolution API suporta horizontal scaling
+Múltiplos containers compartilham Redis para estado de instâncias
+PostgreSQL com max_connections=1000 para pooling
+S3/MinIO para arquivos (externaliza do container)
+Fontes:
+
+Baileys Memory Usage Issue
+System Architecture Overview
+2.4 Sessões vs Instâncias
+⚠️ CRÍTICO: Evolution API NÃO usa conceito de "múltiplas sessões por instância"
+
+1 instância = 1 sessão WhatsApp = 1 número
+Não há compartilhamento de instância entre números
+Cada tenant PRECISA de sua própria instância
+Diferenciação de Mensagens:
+
+Webhook inclui campo instance identificando de qual instância veio
+Filtrar mensagens por instance_name no backend
+2.5 Custos Infraestrutura
+Servidor Evolution API (Auto-hospedado):
+
+Modelo	Instâncias	RAM Necessária	CPU	Custo Estimado/mês*
+Pequeno	1-5	4 GB	2 cores	$10-20 (VPS básico)
+Médio	5-20	8 GB	4 cores	$40-60 (VPS médio)
+Grande	20-50	16 GB	8 cores	$80-120 (VPS robusto)
+Enterprise	50-200	32+ GB	16+ cores	$200-500 (cluster)
+*Valores aproximados considerando DigitalOcean, Hetzner, AWS Lightsail
+
+Observações:
+
+Baileys (WhatsApp Web) é gratuito - sem custos de API do WhatsApp
+Cloud API oficial WhatsApp cobra por mensagem (~$0.005-0.01/msg)
+Auto-hospedagem tem risco de banimento (protocolo não-oficial)
+Fonte: Evolution API Pricing Comparison
+
+3. Modelos Comparados
+Modelo A: 1 Instância por Tenant (Isolamento Total)
+Renderizando diagrama...
+
+Como funciona:
+
+Cada tenant tem instanceName único (ex: tenant_123)
+Criada quando tenant ativa assinatura WhatsApp
+Deletada quando tenant cancela/desativa
+Prós:
+
+✅ Isolamento total - falha em uma não afeta outras
+✅ Segurança - zero risco de misturar mensagens
+✅ Configuração independente - webhooks, integrações por tenant
+✅ Fácil gestão - mapeamento 1:1 tenant → instância
+✅ Debugging simples - logs isolados por instância
+✅ Conformidade LGPD - dados completamente segregados
+Contras:
+
+❌ Custo médio - RAM cresce linear com tenants (500 MB × N)
+❌ Overhead de criação - provisionar instância por tenant
+❌ Desperdício - tenant inativo ainda consome recursos
+Quando usar:
+
+Sistema SaaS multitenancy
+Privacidade/LGPD é crítica
+Tenants pagantes (justifica custo)
+Até ~200 tenants por servidor
+Modelo B: 1 Instância Compartilhada (Todos no Mesmo Número)
+Renderizando diagrama...
+
+Como funciona:
+
+UMA instância Evolution com número da empresa
+Todos os tenants usam o mesmo número WhatsApp
+Backend filtra mensagens por contexto (ex: número do cliente)
+Prós:
+
+✅ Custo baixíssimo - apenas 1 instância (~500 MB RAM total)
+✅ Setup ultra-simples - uma vez só
+✅ Sem overhead - nenhuma criação dinâmica
+Contras:
+
+❌ NÃO SE APLICA AO SEU CASO
+❌ Cada tenant precisa de número próprio (requisito do negócio)
+❌ Impossível diferenciar mensagens se todos no mesmo número
+❌ Zero escalabilidade
+Quando usar:
+
+⛔ NÃO USAR para sistema multiagente onde cada afiliado tem número próprio
+Modelo C: Pool Dinâmico de Instâncias (Orquestração Avançada)
+Renderizando diagrama...
+
+Como funciona:
+
+Backend gerencia pool de instâncias Evolution
+Instâncias criadas sob demanda
+Instâncias ociosas destruídas após X dias
+Redis mantém mapeamento tenant → instância
+Prós:
+
+✅ Máxima eficiência - paga só pelo que usa
+✅ Auto-scaling - cresce/diminui com demanda real
+✅ Multi-servidor - distribui carga entre Evolution APIs
+✅ Otimização de custo - remove instâncias ociosas
+Contras:
+
+❌ Complexidade ALTA - precisa orquestração sofisticada
+❌ Risco de perda de sessão - destruir instância = perder sessão WhatsApp
+❌ Reconexão frequente - tenant precisaria re-escanear QR Code
+❌ Desenvolvimento custom - não é feature nativa Evolution
+❌ Over-engineering para sistemas pequenos/médios
+Quando usar:
+
+Sistema com 1000+ tenants
+Alto churn (muitos inativos)
+Equipe DevOps madura
+Kubernetes/orquestração já implementada
+4. Análise Custo-Benefício
+Cenário Real: 100 Tenants Ativos
+Modelo	RAM Total	Custo Servidor/mês	Complexidade Dev	Tempo Implementação
+A - 1:1	50 GB	$120	🟢 Baixa	1 semana
+B - Compartilhado	0.5 GB	$10	⛔ N/A	-
+C - Pool Dinâmico	25-50 GB*	$80-120	🔴 Alta	4-6 semanas
+*varia com taxa de atividade
+
+Cenário Real: 500 Tenants Ativos
+Modelo	RAM Total	Custo Servidor/mês	Escalabilidade	Gestão
+A - 1:1	250 GB	$400-600 (cluster)	🟡 Escala vertical	Simples
+C - Pool	125-200 GB	$300-400 (cluster)	🟢 Escala horizontal	Complexa
+5. Recomendação
+🎯 MODELO A - 1 INSTÂNCIA POR TENANT
+Justificativa:
+
+Requisito de Negócio:
+
+Cada afiliado tem número WhatsApp próprio
+Não há opção de compartilhar - Modelo B inviável
+Escolha real é: A (simples) vs C (complexo)
+Pragmatismo:
+
+Você pediu "não over-engineer"
+Modelo C é overkill para 90% dos casos
+ROI de Modelo C só faz sentido com 1000+ tenants
+Custo Viável:
+
+100 tenants = $120/mês servidor (~$1.20/tenant)
+Afiliado paga assinatura → custo diluído
+Crescimento linear previsível
+Operação Simples:
+
+Criar instância quando tenant ativa
+Deletar quando cancela
+Zero complexidade de orquestração
+Escalabilidade Gradual:
+
+Até 200 tenants: 1 servidor ($120-200/mês)
+200-500: 2 servidores com balanceamento ($300/mês)
+500+: Considerar Modelo C (momento de investir)
+Conformidade:
+
+Isolamento total = LGPD tranquilo
+Cada tenant "dono" de sua instância
+6. Roadmap de Implementação
+Fase 1: Setup Infraestrutura (Semana 1)
+Provisionar Servidor Evolution API:
+
+# docker-compose.yml
+version: '3'
+services:
+  evolution:
+    image: atendai/evolution-api:latest
+    environment:
+      DATABASE_PROVIDER: postgresql
+      DATABASE_URL: postgres://user:pass@db:5432/evolution
+      REDIS_ENABLED: true
+      REDIS_URI: redis://redis:6379
+      S3_ENABLED: true
+      S3_BUCKET: evolution-media
+    deploy:
+      resources:
+        limits:
+          memory: 16GB  # Para ~30 instâncias
+
+Configurar Redis (estado de instâncias compartilhado)
+
+Configurar PostgreSQL (dados persistentes)
+
+Configurar S3/MinIO (arquivos de mídia)
+
+Fase 2: Schema Database (Semana 1)
+-- Adicionar colunas em multi_agent_tenants
+ALTER TABLE multi_agent_tenants 
+ADD COLUMN evolution_instance_id VARCHAR(255),  -- ✅ Já existe
+ADD COLUMN whatsapp_number VARCHAR(20),         -- ✅ Já existe
+ADD COLUMN whatsapp_status VARCHAR(20) DEFAULT 'pending',  -- ❓ Adicionar
+ADD COLUMN whatsapp_connected_at TIMESTAMPTZ,              -- ❓ Adicionar
+ADD COLUMN whatsapp_disconnected_at TIMESTAMPTZ,           -- ❓ Adicionar
+ADD COLUMN evolution_instance_created_at TIMESTAMPTZ;      -- ❓ Adicionar
+
+-- Valores possíveis para whatsapp_status:
+-- 'pending' - instância não criada
+-- 'creating' - criando instância
+-- 'waiting_qr' - aguardando scan QR
+-- 'connected' - WhatsApp conectado
+-- 'disconnected' - WhatsApp desconectado
+-- 'error' - erro na instância
+
+Fase 3: Backend - Gerenciamento de Instâncias (Semana 2)
+// services/evolution-instance-manager.ts
+
+interface EvolutionInstance {
+  instanceName: string;
+  tenantId: string;
+  status: 'pending' | 'creating' | 'waiting_qr' | 'connected' | 'disconnected';
+}
+
+class EvolutionInstanceManager {
+  
+  async createInstanceForTenant(tenantId: string): Promise<string> {
+    const tenant = await db.multiAgentTenants.findUnique({ where: { id: tenantId } });
+    
+    if (tenant.evolution_instance_id) {
+      throw new Error('Tenant já tem instância');
+    }
+    
+    const instanceName = `tenant_${tenantId}`;
+    
+    // Criar instância na Evolution API
+    const response = await evolutionApiClient.post('/instance/create', {
+      instanceName,
+      integration: 'WHATSAPP-BAILEYS',
+      webhook: {
+        url: `${process.env.BACKEND_URL}/webhooks/evolution`,
+        webhook_by_events: true,
+        events: ['QRCODE_UPDATED', 'CONNECTION_UPDATE', 'MESSAGES_UPSERT']
+      }
+    });
+    
+    // Atualizar DB
+    await db.multiAgentTenants.update({
+      where: { id: tenantId },
+      data: {
+        evolution_instance_id: instanceName,
+        whatsapp_status: 'waiting_qr',
+        evolution_instance_created_at: new Date()
+      }
+    });
+    
+    return instanceName;
+  }
+  
+  async deleteInstanceForTenant(tenantId: string): Promise<void> {
+    const tenant = await db.multiAgentTenants.findUnique({ where: { id: tenantId } });
+    
+    if (!tenant.evolution_instance_id) return;
+    
+    // Deletar da Evolution API
+    await evolutionApiClient.delete(`/instance/delete/${tenant.evolution_instance_id}`);
+    
+    // Limpar DB
+    await db.multiAgentTenants.update({
+      where: { id: tenantId },
+      data: {
+        evolution_instance_id: null,
+        whatsapp_status: 'pending',
+        whatsapp_number: null,
+        whatsapp_connected_at: null
+      }
+    });
+  }
+  
+  async getInstanceStatus(instanceName: string): Promise<any> {
+    return await evolutionApiClient.get(`/instance/connectionState/${instanceName}`);
+  }
+}
+
+Fase 4: Endpoints API (Semana 2)
+// routes/whatsapp.routes.ts
+
+// POST /api/v1/tenants/me/whatsapp/activate
+// Cria instância Evolution para o tenant logado
+router.post('/whatsapp/activate', async (req, res) => {
+  const tenantId = req.user.tenantId;
+  
+  const instanceName = await instanceManager.createInstanceForTenant(tenantId);
+  
+  res.json({ 
+    success: true, 
+    instanceName,
+    message: 'Instância criada. Aguarde QR Code.'
+  });
+});
+
+// DELETE /api/v1/tenants/me/whatsapp/deactivate
+router.delete('/whatsapp/deactivate', async (req, res) => {
+  const tenantId = req.user.tenantId;
+  
+  await instanceManager.deleteInstanceForTenant(tenantId);
+  
+  res.json({ success: true });
+});
+
+// GET /api/v1/tenants/me/whatsapp/status
+router.get('/whatsapp/status', async (req, res) => {
+  const tenant = await db.multiAgentTenants.findUnique({
+    where: { id: req.user.tenantId }
+  });
+  
+  res.json({
+    status: tenant.whatsapp_status,
+    number: tenant.whatsapp_number,
+    connected_at: tenant.whatsapp_connected_at,
+    has_instance: !!tenant.evolution_instance_id
+  });
+});
+
+Fase 5: Monitoramento e Alerts (Semana 3)
+// Cron job - verificar instâncias problemáticas
+cron.schedule('*/5 * * * *', async () => {
+  const tenants = await db.multiAgentTenants.findMany({
+    where: { 
+      evolution_instance_id: { not: null },
+      whatsapp_status: 'connected'
+    }
+  });
+  
+  for (const tenant of tenants) {
+    try {
+      const status = await instanceManager.getInstanceStatus(tenant.evolution_instance_id);
+      
+      if (status.state !== 'open') {
+        // Desconectou - atualizar status e notificar
+        await db.multiAgentTenants.update({
+          where: { id: tenant.id },
+          data: { 
+            whatsapp_status: 'disconnected',
+            whatsapp_disconnected_at: new Date()
+          }
+        });
+        
+        await notificationService.send(tenant.id, {
+          type: 'whatsapp_disconnected',
+          message: 'Seu WhatsApp foi desconectado. Reconecte no painel.'
+        });
+      }
+    } catch (error) {
+      logger.error(`Erro ao verificar instância ${tenant.evolution_instance_id}`, error);
+    }
+  }
+});
+
+7. Riscos e Mitigações
+Risco	Probabilidade	Impacto	Mitigação
+Servidor Evolution sobrecarregado	🟡 Média	🔴 Alto	Monitorar RAM/CPU, alertar em 80%, provisionar segundo servidor
+Instância travada	🟡 Média	🟡 Médio	Endpoint /instance/restart, cron de health check
+Tenant deletado mas instância permanece	🟢 Baixa	🟡 Médio	Soft delete com cleanup job, ou cascade delete
+Custo crescente	🟢 Baixa	🟡 Médio	Dashboard de métricas, alertar se > budget mensal
+Banimento WhatsApp (Baileys)	🟡 Média	🔴 Alto	Docs claras (uso por própria conta), considerar Cloud API futuro
+8. Quando Migrar para Modelo C (Pool Dinâmico)?
+Considere migrar quando:
+
+✅ Mais de 500 tenants ativos
+✅ Taxa de churn alta (>30% tenants inativos por mês)
+✅ Custo de servidor > $500/mês
+✅ Equipe DevOps experiente disponível
+✅ ROI calculado (economia > custo de desenvolvimento)
+Não migre se:
+
+❌ Menos de 200 tenants
+❌ Time pequeno (foco em produto, não infra)
+❌ Modelo A funciona bem
+9. Referências
+Documentação:
+
+Evolution API Instances Overview
+Evolution Manager v2
+System Architecture Overview
+Performance:
+
+Baileys Memory Usage Discussion
+Multi-Tenant Architecture Best Practices
+Casos Reais:
+
+Evolution Manager GitHub
+Evolution + Chatwoot Docker Setup
+Update Todos
+ Pesquisar documentações oficiais (Evolution API e Chatwoot)
+ Análise 1: Arquitetura Evolution + Chatwoot (modelos de integração)
+ Análise 2: Modelo de Instâncias Evolution (gerenciamento)
+ Analisando fluxo de QR Code e reconexão
+ Compilar e formatar os 3 documentos técnicos
+📋 ANÁLISE 3: FLUXO QR CODE + RECONEXÃO
+1. Contexto
+Tenant ativa assinatura WhatsApp → precisa conectar número → escanear QR Code. WhatsApp pode desconectar a qualquer momento → tenant precisa reconectar. Questão: Como implementar fluxo completo de QR Code e reconexão?
+
+2. Pesquisa Técnica
+2.1 Ciclo de Vida de Conexão WhatsApp
+Renderizando diagrama...
+
+2.2 Webhooks Evolution - Eventos de Conexão
+CONNECTION_UPDATE:
+
+Disparado quando estado da conexão muda.
+
+Payload Exemplo:
+
+{
+  "event": "connection.update",
+  "instance": "tenant_123",
+  "data": {
+    "instance": "tenant_123",
+    "state": "open",  // "close", "connecting", "open"
+    "statusReason": 200
+  },
+  "destination": "https://backend.com/webhooks/evolution",
+  "date_time": "2026-01-22T14:59:30.777Z",
+  "server_url": "http://evolution:8080",
+  "apikey": "xxx"
+}
+
+Estados possíveis:
+
+close - desconectado
+connecting - conectando
+open - conectado com sucesso
+QRCODE_UPDATED:
+
+Disparado quando QR Code é gerado ou atualizado.
+
+Payload Exemplo:
+
+{
+  "event": "qrcode.updated",
+  "instance": "tenant_123",
+  "data": {
+    "qr": "2@67576ghf/RMXr8A2IP3/...",  // String base64 do QR
+    "instance": "tenant_123"
+  },
+  "destination": "https://backend.com/webhooks/evolution",
+  "date_time": "2026-01-22T15:00:01.123Z"
+}
+
+Fontes:
+
+Evolution API Webhooks Documentation
+QR Code Webhook Example
+2.3 Geração de QR Code
+Método 1: Via Webhook (Recomendado)
+
+Após criar instância, Evolution automaticamente:
+
+Gera QR Code
+Dispara webhook QRCODE_UPDATED
+Backend armazena QR Code (cache/DB)
+Frontend consulta backend para exibir
+Método 2: Polling API
+
+Endpoint: GET /instance/connect/{instance}
+
+Response:
+
+{
+  "code": "success",
+  "qrcode": {
+    "pairingCode": null,
+    "base64": "data:image/png;base64,iVBORw0KGgoAAAANS...",
+    "count": 1
+  }
+}
+
+Observações:
+
+QR Code expira após ~60 segundos
+Novo QR gerado automaticamente (webhook dispara novamente)
+Máximo ~4-5 QR Codes antes de precisar recriar instância
+Fonte: Evolution API v2.0 Postman
+
+2.4 Problemas Conhecidos
+Bug: QR Code Infinite Loop (Resolvido em v2.3.4+):
+
+Instâncias entravam em loop infinito tentando reconectar
+Fix: adiciona check isInitialConnection para permitir primeiro QR Code
+Bug: Webhook para após QR Code (Issue #1520):
+
+Webhooks paravam de funcionar após correção de QR Code
+Solução: garantir webhook configurado ANTES de gerar QR
+Fonte:
+
+QR Code Loop Fix PR
+Webhook停止 Issue
+3. Fluxos Detalhados
+3.1 FLUXO COMPLETO: Ativação Primeira Vez
+Renderizando diagrama...
+
+3.2 FLUXO: Reconexão (WhatsApp Desconectou)
+Renderizando diagrama...
+
+3.3 FLUXO: Monitoramento Contínuo (Cron Job)
+Renderizando diagrama...
+
+4. Endpoints Backend Necessários
+4.1 POST /api/v1/tenants/me/whatsapp/activate
+Request: Vazio (tenant identificado via JWT)
+
+Response:
+
+{
+  "success": true,
+  "message": "Instância criada. QR Code será gerado em instantes.",
+  "instance_id": "tenant_123"
+}
+
+Lógica:
+
+Verifica se tenant já tem evolution_instance_id → erro se já tem
+Cria instância Evolution via API
+Salva evolution_instance_id no DB
+Atualiza whatsapp_status = "waiting_qr"
+4.2 GET /api/v1/tenants/me/whatsapp/qrcode
+Request: Vazio
+
+Response:
+
+{
+  "qr": "data:image/png;base64,iVBORw0KGgoAAAANS...",
+  "expires_at": "2026-01-22T15:01:00Z",
+  "attempt": 1  // Quantos QR Codes já foram gerados
+}
+
+Lógica:
+
+Busca QR Code no cache (Redis) - chave: qr:tenant_123
+Se não encontrar, consulta Evolution API GET /instance/connect/{instance}
+Retorna base64 do QR Code
+Frontend renderiza como <img src={qr} />
+4.3 GET /api/v1/tenants/me/whatsapp/status
+Request: Vazio
+
+Response:
+
+{
+  "status": "connected",  // "pending" | "waiting_qr" | "connecting" | "connected" | "disconnected"
+  "number": "5511999999999",
+  "connected_at": "2026-01-22T15:05:00Z",
+  "disconnected_at": null,
+  "has_instance": true
+}
+
+Lógica:
+
+Busca tenant no DB
+Retorna campos relevantes
+4.4 POST /api/v1/tenants/me/whatsapp/reconnect
+Request: Vazio
+
+Response:
+
+{
+  "success": true,
+  "message": "Novo QR Code gerado. Escaneie para reconectar."
+}
+
+Lógica:
+
+Verifica se tenant tem instância
+Faz logout da sessão atual: DELETE /instance/logout/{instance}
+Força novo QR: GET /instance/connect/{instance}
+Atualiza whatsapp_status = "waiting_qr"
+4.5 DELETE /api/v1/tenants/me/whatsapp/disconnect
+Request: Vazio
+
+Response:
+
+{
+  "success": true,
+  "message": "WhatsApp desconectado e instância deletada."
+}
+
+Lógica:
+
+Deleta instância Evolution: DELETE /instance/delete/{instance}
+Limpa campos no DB:
+evolution_instance_id = null
+whatsapp_status = "pending"
+whatsapp_number = null
+4.6 POST /webhooks/evolution (Interno - não exposto)
+Request (de Evolution API):
+
+{
+  "event": "qrcode.updated" | "connection.update" | "messages.upsert",
+  "instance": "tenant_123",
+  "data": { ... }
+}
+
+Response: 200 OK
+
+Lógica:
+
+app.post('/webhooks/evolution', async (req, res) => {
+  const { event, instance, data } = req.body;
+  
+  // Encontrar tenant por instance
+  const tenant = await db.multiAgentTenants.findFirst({
+    where: { evolution_instance_id: instance }
+  });
+  
+  if (!tenant) {
+    logger.warn(`Instância ${instance} não encontrada no DB`);
+    return res.status(200).send('OK');
+  }
+  
+  switch (event) {
+    case 'qrcode.updated':
+      // Armazenar QR Code no cache
+      await redis.setex(`qr:${instance}`, 60, data.qr);  // Expira em 60s
+      break;
+      
+    case 'connection.update':
+      if (data.state === 'open') {
+        // Conectado
+        await db.multiAgentTenants.update({
+          where: { id: tenant.id },
+          data: {
+            whatsapp_status: 'connected',
+            whatsapp_connected_at: new Date()
+            // Extrair número do WhatsApp (data pode conter)
+          }
+        });
+      } else if (data.state === 'close') {
+        // Desconectado
+        await db.multiAgentTenants.update({
+          where: { id: tenant.id },
+          data: {
+            whatsapp_status: 'disconnected',
+            whatsapp_disconnected_at: new Date()
+          }
+        });
+        
+        // Notificar tenant
+        await notificationService.send(tenant.id, {
+          type: 'whatsapp_disconnected',
+          title: 'WhatsApp Desconectado',
+          message: 'Reconecte seu WhatsApp no painel.'
+        });
+      } else if (data.state === 'connecting') {
+        await db.multiAgentTenants.update({
+          where: { id: tenant.id },
+          data: { whatsapp_status: 'connecting' }
+        });
+      }
+      break;
+      
+    case 'messages.upsert':
+      // Processar mensagem recebida
+      // (fora do escopo deste documento - vai para Chatwoot)
+      break;
+  }
+  
+  res.status(200).send('OK');
+});
+
+5. Ajustes no Schema SQL
+-- Verificar se colunas já existem (algumas podem já estar no schema)
+-- ✅ = já existe, ❓ = precisa adicionar
+
+ALTER TABLE multi_agent_tenants 
+ADD COLUMN IF NOT EXISTS evolution_instance_id VARCHAR(255);     -- ✅ Já existe
+ADD COLUMN IF NOT EXISTS whatsapp_number VARCHAR(20);             -- ✅ Já existe
+ADD COLUMN IF NOT EXISTS whatsapp_status VARCHAR(20) DEFAULT 'pending';  -- ❓ ADICIONAR
+ADD COLUMN IF NOT EXISTS whatsapp_connected_at TIMESTAMPTZ;       -- ❓ ADICIONAR
+ADD COLUMN IF NOT EXISTS whatsapp_disconnected_at TIMESTAMPTZ;    -- ❓ ADICIONAR
+ADD COLUMN IF NOT EXISTS evolution_instance_created_at TIMESTAMPTZ;  -- ❓ ADICIONAR
+
+-- Índices para performance
+CREATE INDEX IF NOT EXISTS idx_whatsapp_status ON multi_agent_tenants(whatsapp_status);
+CREATE INDEX IF NOT EXISTS idx_evolution_instance ON multi_agent_tenants(evolution_instance_id);
+
+-- Check constraint para valores válidos
+ALTER TABLE multi_agent_tenants 
+ADD CONSTRAINT whatsapp_status_check 
+CHECK (whatsapp_status IN ('pending', 'creating', 'waiting_qr', 'connecting', 'connected', 'disconnected', 'error'));
+
+6. Frontend - Wireframe/Fluxo
+Tela 1: WhatsApp Não Conectado
+┌──────────────────────────────────────────┐
+│  📱 WhatsApp Multi-Agente                │
+├──────────────────────────────────────────┤
+│                                          │
+│  Status: ⚪ Não Conectado                │
+│                                          │
+│  Para começar a usar o atendimento       │
+│  multiagente, conecte seu WhatsApp:      │
+│                                          │
+│  ┌────────────────────────────┐          │
+│  │   🚀 Ativar WhatsApp       │          │
+│  └────────────────────────────┘          │
+│                                          │
+└──────────────────────────────────────────┘
+
+Tela 2: Aguardando QR Code
+┌──────────────────────────────────────────┐
+│  📱 WhatsApp Multi-Agente                │
+├──────────────────────────────────────────┤
+│                                          │
+│  Status: 🔄 Gerando QR Code...           │
+│                                          │
+│  ┌────────────────────────────┐          │
+│  │                            │          │
+│  │     [Spinner Animation]    │          │
+│  │                            │          │
+│  └────────────────────────────┘          │
+│                                          │
+│  Aguarde, estamos preparando sua         │
+│  conexão WhatsApp...                     │
+│                                          │
+└──────────────────────────────────────────┘
+
+Tela 3: Exibindo QR Code
+┌──────────────────────────────────────────┐
+│  📱 WhatsApp Multi-Agente                │
+├──────────────────────────────────────────┤
+│                                          │
+│  Status: 📷 Aguardando Scan              │
+│                                          │
+│  ┌────────────────────────────┐          │
+│  │   ██████████████████       │          │
+│  │   ██  QR CODE  ██          │          │
+│  │   ██████████████████       │          │
+│  └────────────────────────────┘          │
+│                                          │
+│  📱 Passos para conectar:                │
+│  1. Abra WhatsApp no celular             │
+│  2. Toque em Mais > Dispositivos         │
+│     Conectados                           │
+│  3. Toque em Conectar Dispositivo        │
+│  4. Aponte o celular para este QR Code   │
+│                                          │
+│  ⏱️ QR Code expira em 45 segundos        │
+│                                          │
+└──────────────────────────────────────────┘
+
+Tela 4: Conectado
+┌──────────────────────────────────────────┐
+│  📱 WhatsApp Multi-Agente                │
+├──────────────────────────────────────────┤
+│                                          │
+│  Status: ✅ Conectado                    │
+│  Número: +55 11 99999-9999               │
+│  Desde: 22/01/2026 às 15:05              │
+│                                          │
+│  ┌────────────────────────────┐          │
+│  │  Seu WhatsApp está ativo   │          │
+│  │  e pronto para atender!    │          │
+│  └────────────────────────────┘          │
+│                                          │
+│  [📊 Ver Conversas]  [⚙️ Configurar]   │
+│                                          │
+│  ┌────────────────────────────┐          │
+│  │   🔌 Desconectar WhatsApp  │          │
+│  └────────────────────────────┘          │
+│                                          │
+└──────────────────────────────────────────┘
+
+Tela 5: Desconectado (Precisa Reconectar)
+┌──────────────────────────────────────────┐
+│  📱 WhatsApp Multi-Agente                │
+├──────────────────────────────────────────┤
+│                                          │
+│  ⚠️ STATUS: DESCONECTADO                 │
+│                                          │
+│  ┌────────────────────────────────────┐  │
+│  │  Seu WhatsApp foi desconectado.   │  │
+│  │  Clique abaixo para reconectar.   │  │
+│  └────────────────────────────────────┘  │
+│                                          │
+│  Último número: +55 11 99999-9999        │
+│  Desconectado em: 23/01/2026 às 10:30    │
+│                                          │
+│  ┌────────────────────────────┐          │
+│  │   🔄 Reconectar WhatsApp   │          │
+│  └────────────────────────────┘          │
+│                                          │
+└──────────────────────────────────────────┘
+
+7. Frontend - Implementação React
+// pages/WhatsAppConnection.tsx
+
+import { useState, useEffect } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
+
+type WhatsAppStatus = 'pending' | 'waiting_qr' | 'connecting' | 'connected' | 'disconnected';
+
+export default function WhatsAppConnection() {
+  const [status, setStatus] = useState<WhatsAppStatus>('pending');
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [number, setNumber] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // Buscar status inicial
+  useEffect(() => {
+    fetchStatus();
+  }, []);
+
+  // Polling QR Code quando status = waiting_qr
+  useEffect(() => {
+    if (status === 'waiting_qr') {
+      const interval = setInterval(fetchQRCode, 2000);  // A cada 2s
+      return () => clearInterval(interval);
+    }
+  }, [status]);
+
+  // Polling status quando status = connecting
+  useEffect(() => {
+    if (status === 'connecting') {
+      const interval = setInterval(fetchStatus, 1000);  // A cada 1s
+      return () => clearInterval(interval);
+    }
+  }, [status]);
+
+  const fetchStatus = async () => {
+    const res = await fetch('/api/v1/tenants/me/whatsapp/status');
+    const data = await res.json();
+    setStatus(data.status);
+    setNumber(data.number);
+  };
+
+  const fetchQRCode = async () => {
+    const res = await fetch('/api/v1/tenants/me/whatsapp/qrcode');
+    if (res.ok) {
+      const data = await res.json();
+      setQrCode(data.qr);
+    }
+  };
+
+  const handleActivate = async () => {
+    setLoading(true);
+    await fetch('/api/v1/tenants/me/whatsapp/activate', { method: 'POST' });
+    setStatus('waiting_qr');
+    setLoading(false);
+  };
+
+  const handleReconnect = async () => {
+    setLoading(true);
+    await fetch('/api/v1/tenants/me/whatsapp/reconnect', { method: 'POST' });
+    setStatus('waiting_qr');
+    setLoading(false);
+  };
+
+  const handleDisconnect = async () => {
+    if (!confirm('Tem certeza que deseja desconectar?')) return;
+    await fetch('/api/v1/tenants/me/whatsapp/disconnect', { method: 'DELETE' });
+    setStatus('pending');
+    setNumber(null);
+  };
+
+  // Renderização condicional baseada no status
+  if (status === 'pending') {
+    return (
+      <div className="card">
+        <h2>📱 WhatsApp Multi-Agente</h2>
+        <p>Status: ⚪ Não Conectado</p>
+        <button onClick={handleActivate} disabled={loading}>
+          🚀 Ativar WhatsApp
+        </button>
+      </div>
+    );
+  }
+
+  if (status === 'waiting_qr') {
+    return (
+      <div className="card">
+        <h2>📱 WhatsApp Multi-Agente</h2>
+        <p>Status: 📷 Aguardando Scan</p>
+        {qrCode ? (
+          <img src={qrCode} alt="QR Code" width={300} />
+        ) : (
+          <p>🔄 Gerando QR Code...</p>
+        )}
+        <ol>
+          <li>Abra WhatsApp no celular</li>
+          <li>Toque em Mais &gt; Dispositivos Conectados</li>
+          <li>Toque em Conectar Dispositivo</li>
+          <li>Aponte o celular para este QR Code</li>
+        </ol>
+      </div>
+    );
+  }
+
+  if (status === 'connecting') {
+    return (
+      <div className="card">
+        <h2>📱 WhatsApp Multi-Agente</h2>
+        <p>Status: 🔄 Conectando...</p>
+        <p>Aguarde, estamos finalizando a conexão...</p>
+      </div>
+    );
+  }
+
+  if (status === 'connected') {
+    return (
+      <div className="card">
+        <h2>📱 WhatsApp Multi-Agente</h2>
+        <p>Status: ✅ Conectado</p>
+        <p>Número: {number}</p>
+        <button onClick={handleDisconnect}>🔌 Desconectar WhatsApp</button>
+      </div>
+    );
+  }
+
+  if (status === 'disconnected') {
+    return (
+      <div className="card">
+        <h2>📱 WhatsApp Multi-Agente</h2>
+        <p>⚠️ STATUS: DESCONECTADO</p>
+        <p>Último número: {number}</p>
+        <button onClick={handleReconnect} disabled={loading}>
+          🔄 Reconectar WhatsApp
+        </button>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+8. Riscos e Mitigações
+Risco	Probabilidade	Impacto	Mitigação
+QR Code não gerado	🟡 Média	🟡 Médio	Timeout de 30s, botão "Gerar Novo QR", logs detalhados
+Webhook não chega	🟡 Média	🔴 Alto	Polling fallback: GET /instance/connectionState a cada 5s
+QR expira antes de scan	🟢 Baixa	🟢 Baixo	Novo QR gerado automaticamente, informar usuário
+Tenant escaneia mas não conecta	🟡 Média	🟡 Médio	Status "connecting" com timeout 60s, instruções claras
+WhatsApp bane número (Baileys)	🟡 Média	🔴 Alto	Docs de uso responsável, considerar Cloud API para high-volume
+Cache Redis falha	🟢 Baixa	🟡 Médio	Fallback para consulta direta Evolution API
+9. Checklist de Implementação
+Backend:
+ Adicionar colunas whatsapp_status, whatsapp_connected_at, whatsapp_disconnected_at
+ Criar endpoint POST /api/v1/tenants/me/whatsapp/activate
+ Criar endpoint GET /api/v1/tenants/me/whatsapp/qrcode
+ Criar endpoint GET /api/v1/tenants/me/whatsapp/status
+ Criar endpoint POST /api/v1/tenants/me/whatsapp/reconnect
+ Criar endpoint DELETE /api/v1/tenants/me/whatsapp/disconnect
+ Implementar webhook POST /webhooks/evolution
+ Configurar Redis para cache de QR Codes
+ Cron job para monitorar conexões (5 min)
+ Sistema de notificações (email + push)
+Frontend:
+ Tela "Ativar WhatsApp" (botão inicial)
+ Tela "Aguardando QR Code" (loading)
+ Tela "Escanear QR Code" (exibição + instruções)
+ Tela "WhatsApp Conectado" (status + desconectar)
+ Tela "Reconectar WhatsApp" (banner + botão)
+ Polling automático para QR Code (2s)
+ Polling automático para status (1s quando connecting)
+ Tratamento de erros e timeouts
+Testes:
+ Fluxo completo ativação → QR → conexão
+ Fluxo desconexão → reconexão
+ QR Code expira → novo QR gerado
+ Webhook não chega → fallback polling
+ Múltiplos tenants simultâneos
+ Cancelamento de assinatura → delete instância
+10. Referências
+Documentação:
+
+Evolution API Webhooks
+Evolution API v2.0 Postman
+Issues e Fixes:
+
+QR Code Infinite Loop Fix
+Webhook停止 After QR Code
+QR Code Generation Issues
+Tutoriais:
+
+Evolution + Chatwoot Docker
+Evolution API SDK
+Update Todos
+ Pesquisar documentações oficiais (Evolution API e Chatwoot)
+ Análise 1: Arquitetura Evolution + Chatwoot (modelos de integração)
+ Análise 2: Modelo de Instâncias Evolution (gerenciamento)
+ Análise 3: Fluxo QR Code + Reconexão (implementação técnica)
+ Compilar e formatar os 3 documentos técnicos
+📊 RESUMO EXECUTIVO - ANÁLISE COMPLETA EVOLUTION + CHATWOOT
+✅ Análises Concluídas
+Kiro/Antigravity entregando 3 documentos técnicos completos conforme solicitado:
+
+1️⃣ ANÁLISE 1: ARQUITETURA EVOLUTION + CHATWOOT
+Decisão Recomendada: Arquitetura Híbrida
+
+Integração nativa Evolution → Chatwoot (mensagens fluem automaticamente)
+Backend monitora via webhooks paralelos (analytics, controle seletivo)
+Melhor custo-benefício: simplicidade inicial + escalabilidade futura
+Justificativa:
+
+Fase 1 (MVP): integração nativa = setup rápido
+Fase 2 (crescimento): backend já "vê tudo", adiciona lógicas sob demanda
+Fase 3 (escala): migração suave para orquestração total se necessário
+2️⃣ ANÁLISE 2: MODELO DE INSTÂNCIAS EVOLUTION
+Decisão Recomendada: 1 Instância por Tenant
+
+Números:
+
+Consumo: ~500 MB RAM por instância
+100 tenants = servidor 64 GB (~$120/mês)
+500 tenants = cluster ($400-600/mês)
+Justificativa:
+
+Modelo B (compartilhado) = inviável (cada afiliado precisa número próprio)
+Modelo C (pool dinâmico) = over-engineering para <500 tenants
+Modelo A = simplicidade, isolamento total, custo linear previsível
+Quando migrar para Pool Dinâmico:
+
+Só após 500+ tenants ativos
+Alta taxa de churn (>30% inativos/mês)
+Custo servidor > $500/mês
+3️⃣ ANÁLISE 3: FLUXO QR CODE + RECONEXÃO
+Deliverables:
+
+✅ Diagramas de sequência completos (ativação + reconexão)
+✅ 6 endpoints backend especificados com payloads
+✅ Ajustes schema SQL (3 colunas novas)
+✅ Wireframes de 5 telas do painel
+✅ Código React completo (polling automático)
+✅ Webhook handler TypeScript
+✅ Cron job de monitoramento
+Schema SQL Novo:
+
+ALTER TABLE multi_agent_tenants ADD:
+- whatsapp_status VARCHAR(20)           -- "pending" → "connected"
+- whatsapp_connected_at TIMESTAMPTZ
+- whatsapp_disconnected_at TIMESTAMPTZ
+
+🎯 Recomendações Finais - Roadmap
+Semana 1-2: Infraestrutura
+Provisionar servidor Evolution API (16 GB RAM inicial)
+Configurar Redis + PostgreSQL + S3/MinIO
+Ajustar schema SQL (3 colunas)
+Semana 2-3: Backend
+Implementar 6 endpoints WhatsApp
+Webhook Evolution handler
+Cron job monitoramento (5 min)
+Sistema notificações (email desconexão)
+Semana 3-4: Frontend
+Tela ativação WhatsApp
+QR Code com polling (2s)
+Status dashboard
+Reconexão flow
+Semana 4: Testes & Deploy
+Testes de fluxo completo
+Deploy staging → production
+Documentação operacional
+📚 Referências Consolidadas
+Documentação Oficial:
+
+Evolution API Introduction
+Evolution API Chatwoot Integration
+Evolution API Webhooks
+Chatwoot API Reference
+Chatwoot Agent Bots
+Chatwoot Webhooks
+Implementações de Referência:
+
+Evolution + Chatwoot Docker Setup
+Evolution API SDK
+Evolution Manager v2
+Issues Críticos Conhecidos:
+
+Bug: Quoted Message Context Lost
+QR Code Infinite Loop Fix
+Webhook停止 After QR Code
+Performance & Arquitetura:
+
+Baileys Memory Usage Discussion
+System Architecture Overview
+Multi-Tenant Architecture Guide
+⚠️ Riscos Principais & Mitigações
+Risco	Mitigação
+Banimento WhatsApp (Baileys)	Docs de uso responsável, considerar Cloud API para high-volume
+Bug integração nativa Evolution-Chatwoot	Webhooks backend detectam inconsistências, alertas imediatos
+Servidor Evolution sobrecarregado	Monitorar RAM/CPU, alertar 80%, escalar horizontalmente
+WhatsApp desconexões frequentes	Notificações automáticas (email+push), UX reconexão simples
+💰 Estimativa de Custos
+Infraestrutura Inicial (100 tenants):
+
+Servidor Evolution API: $120/mês (64 GB RAM)
+Chatwoot Server: $40/mês (8 GB RAM)
+Redis + PostgreSQL: $20/mês
+S3 Storage: $10/mês
+Total: $190/mês ($1.90/tenant)
+Escalabilidade (500 tenants):
+
+Cluster Evolution (2 servidores): $400/mês
+Chatwoot (scaled): $80/mês
+Infra adicional: $50/mês
+Total: $530/mês ($1.06/tenant)
+🚀 Próximos Passos Imediatos
+Revisar análises e alinhar com time técnico
+Aprovar arquitetura híbrida (Análise 1)
+Aprovar modelo 1:1 instâncias (Análise 2)
+Iniciar implementação seguindo roadmap 4 semanas
+Provisionar servidor Evolution (primeira ação técnica)
+Análise completa entregue. Não foram feitos commits conforme solicitado - todo conteúdo acima está disponível para revisão e uso.
+
+Kiro/Antigravity standing by para esclarecimentos ou deep dives em pontos específicos. 🤖
+

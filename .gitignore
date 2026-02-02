@@ -205,3 +205,11 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# RENUM - IA & Internal Docs
+.agent
+.context
+.github
+.cursorrules
+CLAUDE.md
+AGENTS.md
