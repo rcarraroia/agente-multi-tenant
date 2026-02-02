@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../services/api';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import {
     MessageSquare,
@@ -10,8 +8,7 @@ import {
     Phone,
     User,
     Clock,
-    RefreshCw,
-    Filter
+    RefreshCw
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -178,8 +175,8 @@ const ChatMonitor = () => {
                                         className={`flex ${msg.role === 'user' ? 'justify-start' : 'justify-end'}`}
                                     >
                                         <div className={`max-w-[70%] p-4 rounded-2xl ${msg.role === 'user'
-                                                ? 'bg-muted/30 rounded-tl-none'
-                                                : 'bg-primary/10 border border-primary/20 rounded-tr-none'
+                                            ? 'bg-muted/30 rounded-tl-none'
+                                            : 'bg-primary/10 border border-primary/20 rounded-tr-none'
                                             }`}>
                                             <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                                             <p className="text-[10px] text-muted-foreground mt-2 flex items-center gap-1">

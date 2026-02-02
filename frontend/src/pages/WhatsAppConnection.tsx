@@ -44,7 +44,7 @@ const WhatsAppConnection = () => {
     });
 
     // 2. Fetch QR Code
-    const { data: qrData, isLoading: qrLoading, refetch: refetchQR } = useQuery<QRCodeData>({
+    const { data: qrData, isLoading: qrLoading } = useQuery<QRCodeData>({
         queryKey: ['whatsapp-qrcode'],
         queryFn: async () => {
             const res = await api.get('/whatsapp/qrcode');
