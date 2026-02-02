@@ -209,7 +209,7 @@ __marimo__/
 # RENUM - IA & Internal Docs
 .agent
 .context
-.github
+# .github (Necessário para Actions)
 .cursorrules
 CLAUDE.md
 AGENTS.md
