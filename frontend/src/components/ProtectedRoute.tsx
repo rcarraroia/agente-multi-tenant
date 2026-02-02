@@ -5,7 +5,7 @@ interface ProtectedRouteProps {
     redirectPath?: string;
 }
 
-const ProtectedRoute = ({ redirectPath = 'https://slimquality.com.br/afiliados/login' }: ProtectedRouteProps) => {
+const ProtectedRoute = ({ redirectPath = 'https://slimquality.com.br/login' }: ProtectedRouteProps) => {
     const { user, loading, isSubscribed } = useAuth();
 
     if (loading) {
@@ -20,8 +20,9 @@ const ProtectedRoute = ({ redirectPath = 'https://slimquality.com.br/afiliados/l
     }
 
     if (!user) {
-        // Redirect to main panel login
-        window.location.href = redirectPath;
+        // Redirect to main panel login with returnUrl
+        const currentUrl = window.location.href;
+        window.location.href = `${redirectPath}?returnUrl=${encodeURIComponent(currentUrl)}`;
         return null;
     }
 
