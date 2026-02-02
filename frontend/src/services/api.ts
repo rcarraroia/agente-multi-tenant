@@ -1,5 +1,7 @@
 import axios from 'axios';
 
+import { getTenantSlug } from '../lib/tenant';
+
 const api = axios.create({
     baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1',
     headers: {
@@ -7,9 +9,12 @@ const api = axios.create({
     },
 });
 
-// Add a request interceptor to attach JWT if exists
+// Add a request interceptor to attach JWT and Tenant ID
 api.interceptors.request.use((config) => {
-    // Session handling logic here (to be refined in Etapa 3)
+    const tenantSlug = getTenantSlug();
+    if (tenantSlug) {
+        config.headers['X-Tenant-Slug'] = tenantSlug;
+    }
     return config;
 });
 
