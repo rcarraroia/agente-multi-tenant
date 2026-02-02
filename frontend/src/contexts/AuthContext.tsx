@@ -25,17 +25,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     useEffect(() => {
         // 1. Get initial session
-        supabase.auth.getSession().then(({ data: { session } }: { data: { session: Session | null } }) => {
-            setSession(session);
-            setUser(session?.user ?? null);
-            if (session) {
-                // Set axios default header
-                api.defaults.headers.common['Authorization'] = `Bearer ${session.access_token}`;
-                checkSubscription();
-            } else {
+        const initAuth = async () => {
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (session) {
+                    setSession(session);
+                    setUser(session.user);
+                    api.defaults.headers.common['Authorization'] = `Bearer ${session.access_token}`;
+                    await checkSubscription();
+                } else {
+                    // Se houver tokens no hash, vamos esperar um pouco pelo onAuthStateChange
+                    const hasTokens = window.location.hash.includes('access_token=');
+                    if (!hasTokens) {
+                        setLoading(false);
+                    }
+                }
+            } catch (error) {
+                console.error('Auth init error:', error);
                 setLoading(false);
             }
-        });
+        };
+
+        initAuth();
 
         // 2. Listen for auth changes (Transparent SSO)
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: string, session: Session | null) => {
