@@ -22,7 +22,8 @@ const ProtectedRoute = ({ redirectPath = 'https://slimquality.com.br/login' }: P
     if (!user) {
         // Redirect to main panel login with returnUrl
         const currentUrl = window.location.href;
-        window.location.href = `${redirectPath}?returnUrl=${encodeURIComponent(currentUrl)}`;
+        const baseLoginUrl = redirectPath.endsWith('/') ? redirectPath.slice(0, -1) : redirectPath;
+        window.location.href = `${baseLoginUrl}?returnUrl=${encodeURIComponent(currentUrl)}`;
         return null;
     }
 

@@ -55,9 +55,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const checkSubscription = async () => {
         try {
-            // Endpoint /tenants/me already has the Guard in backend
-            await api.get('/tenants/me');
-            setIsSubscribed(true);
+            // Check in affiliate_services table for active service
+            const { data, error } = await supabase
+                .from('affiliate_services')
+                .select('id, status')
+                .eq('service_type', 'agente_ia')
+                .eq('status', 'active')
+                .maybeSingle();
+
+            if (error) throw error;
+            setIsSubscribed(!!data);
         } catch (error) {
             console.error('Subscription check failed:', error);
             setIsSubscribed(false);
