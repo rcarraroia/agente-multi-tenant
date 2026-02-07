@@ -21,7 +21,6 @@ from app.core.logging import (
     PerformanceLogger,
     AuditLogger
 )
-from app.api.v1.monitoring import record_request_metric, record_database_metric, record_external_service_metric
 
 class LoggingMiddleware(BaseHTTPMiddleware):
     """
@@ -111,14 +110,14 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                 user_id=self._extract_user_id_from_request(request)
             )
             
-            # Registrar métrica no dashboard
-            record_request_metric(
-                method=method,
-                path=path,
-                duration_ms=duration_ms,
-                status_code=response.status_code,
-                user_id=self._extract_user_id_from_request(request)
-            )
+            # Registrar métrica no dashboard (removido para evitar import circular)
+            # record_request_metric(
+            #     method=method,
+            #     path=path,
+            #     duration_ms=duration_ms,
+            #     status_code=response.status_code,
+            #     user_id=self._extract_user_id_from_request(request)
+            # )
             
             # Log de auditoria para endpoints sensíveis
             if self._is_sensitive_endpoint(path):
@@ -157,14 +156,14 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                 user_id=self._extract_user_id_from_request(request)
             )
             
-            # Registrar métrica de erro no dashboard
-            record_request_metric(
-                method=method,
-                path=path,
-                duration_ms=duration_ms,
-                status_code=500,
-                user_id=self._extract_user_id_from_request(request)
-            )
+            # Registrar métrica de erro no dashboard (removido para evitar import circular)
+            # record_request_metric(
+            #     method=method,
+            #     path=path,
+            #     duration_ms=duration_ms,
+            #     status_code=500,
+            #     user_id=self._extract_user_id_from_request(request)
+            # )
             
             # Re-raise a exceção
             raise
