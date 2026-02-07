@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     SUPABASE_ANON_KEY: Optional[str] = None
 
     # Security
-    JWT_SECRET: str
+    JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
     BACKEND_CORS_ORIGINS: list[str] = []
@@ -47,5 +47,7 @@ class Settings(BaseSettings):
     EVOLUTION_API_KEY: Optional[str] = None
     CHATWOOT_URL: Optional[str] = None
     CHATWOOT_API_KEY: Optional[str] = None
+    CHATWOOT_ADMIN_TOKEN: Optional[str] = None
+    CHATWOOT_ACCOUNT_ID: Optional[str] = None
 
 settings = Settings()

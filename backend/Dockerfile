@@ -1,4 +1,4 @@
-# Agente Multi-Tenant Backend
+# Agente Multi-Tenant Backend - Otimizado para EasyPanel
 # Build stage
 FROM python:3.11-slim as builder
 
@@ -8,21 +8,27 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     python3-dev \
+    gcc \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar e instalar dependências Python
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Production stage
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Instalar curl para healthcheck
+# Instalar apenas dependências runtime necessárias
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Criar usuário não-root para segurança
+RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 # Copiar dependências instaladas do builder
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
@@ -35,12 +41,16 @@ COPY . .
 ENV TZ=America/Sao_Paulo
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
+# Configurar permissões
+RUN chown -R appuser:appuser /app
+USER appuser
+
 # Expor porta
 EXPOSE 8000
 
-# Health check
+# Health check otimizado
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Comando de inicialização
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+# Comando de inicialização otimizado para produção
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--access-log", "--log-level", "info"]
