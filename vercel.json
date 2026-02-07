@@ -1,10 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
-  "installCommand": "npm ci",
+  "buildCommand": "cd frontend && npm ci && npm run build",
+  "outputDirectory": "frontend/dist",
+  "installCommand": "cd frontend && npm ci",
   "framework": null,
-  "rootDirectory": "frontend",
   "rewrites": [
     {
       "source": "/(.*)",
@@ -29,5 +28,10 @@
         }
       ]
     }
-  ]
+  ],
+  "env": {
+    "VITE_API_URL": "https://agente-multi-tenant.wpjtfd.easypanel.host/api/v1",
+    "VITE_SUPABASE_URL": "https://vtynmmtuvxreiwcxxlma.supabase.co",
+    "VITE_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ0eW5tbXR1dnhyZWl3Y3h4bG1hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYzODE2MDIsImV4cCI6MjA3MTk1NzYwMn0.fd-WSqFh7QsSlB0Q62cXAZZ-yDcI0n0sXyJ4eWIRKH8"
+  }
 }
