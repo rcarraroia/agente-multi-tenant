@@ -1,4 +1,4 @@
-# Agente Multi-Tenant Backend - Otimizado para EasyPanel
+# Agente Multi-Tenant Backend - Otimizado para EasyPanel com AI Dependencies
 # Build stage
 FROM python:3.11-slim as builder
 
@@ -9,12 +9,44 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     python3-dev \
     gcc \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
-# Copiar e instalar dependências Python
+# Configurar pip para downloads grandes e timeouts estendidos
+RUN pip install --no-cache-dir --upgrade pip
+
+# Copiar requirements e instalar em etapas para otimizar cache
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+
+# Instalar dependências básicas primeiro (cache layer)
+RUN pip install --no-cache-dir --timeout=300 \
+    fastapi==0.115.6 \
+    uvicorn[standard]==0.34.0 \
+    pydantic==2.10.4 \
+    pydantic-settings==2.7.0 \
+    python-dotenv==1.0.1 \
+    python-multipart==0.0.9 \
+    supabase==2.11.0 \
+    python-jose[cryptography]==3.3.0 \
+    passlib[bcrypt]==1.7.4 \
+    redis==5.2.1 \
+    structlog==24.4.0
+
+# Instalar dependências AI com timeout estendido (cache layer separado)
+RUN pip install --no-cache-dir --timeout=600 --retries=3 \
+    numpy==1.26.4 \
+    tiktoken==0.8.0
+
+# Instalar LangChain (cache layer separado)
+RUN pip install --no-cache-dir --timeout=600 --retries=3 \
+    langchain==0.3.14 \
+    langchain-openai==0.3.1 \
+    langchain-community==0.3.14 \
+    langgraph==0.2.62
+
+# Instalar sentence-transformers por último (maior download)
+RUN pip install --no-cache-dir --timeout=900 --retries=3 \
+    sentence-transformers==3.3.1
 
 # Production stage
 FROM python:3.11-slim

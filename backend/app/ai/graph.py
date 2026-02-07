@@ -1,12 +1,13 @@
-# Simplified version without LangGraph dependencies
-# This is a placeholder until AI dependencies are restored
-
-def build_agent_graph():
-    """
-    Placeholder function that returns None.
-    The actual graph will be implemented when AI dependencies are restored.
-    """
-    return None
+from langgraph.graph import StateGraph, END
+from app.ai.nodes import (
+    AgentState,
+    load_context,
+    classify_intent,
+    generate_response,
+    evaluate_handoff,
+    sicc_retriever,
+    search_knowledge,
+    sicc_reflection
 )
 from app.ai.core.registry import SkillRegistry
 from app.ai.core.router import SkillRouter
