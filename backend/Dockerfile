@@ -1,6 +1,6 @@
-# Agente Multi-Tenant Backend - Otimizado para EasyPanel com AI Dependencies
+# Agente Multi-Tenant Backend - Otimizado para EasyPanel (CPU-ONLY)
 # Build stage
-FROM python:3.11-slim as builder
+FROM python:3.11-slim-bookworm as builder
 
 WORKDIR /app
 
@@ -9,47 +9,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     python3-dev \
     gcc \
-    wget \
     && rm -rf /var/lib/apt/lists/*
 
-# Configurar pip para downloads grandes e timeouts estendidos
+# Configurar pip
 RUN pip install --no-cache-dir --upgrade pip
 
-# Copiar requirements e instalar em etapas para otimizar cache
+# Copiar requirements
 COPY requirements.txt .
 
-# Instalar dependências básicas primeiro (cache layer)
-RUN pip install --no-cache-dir --timeout=300 \
-    fastapi==0.115.6 \
-    uvicorn[standard]==0.34.0 \
-    pydantic==2.10.4 \
-    pydantic-settings==2.7.0 \
-    python-dotenv==1.0.1 \
-    python-multipart==0.0.9 \
-    supabase==2.11.0 \
-    python-jose[cryptography]==3.3.0 \
-    passlib[bcrypt]==1.7.4 \
-    redis==5.2.1 \
-    structlog==24.4.0
-
-# Instalar dependências AI com timeout estendido (cache layer separado)
+# 1. Instalar Torch CPU-ONLY primeiro (GRANDE ECONOMIA DE ESPAÇO)
+# Isso evita o download de ~600MB de drivers CUDA desnecessários
 RUN pip install --no-cache-dir --timeout=600 --retries=3 \
-    numpy==1.26.4 \
-    tiktoken==0.8.0
+    torch==2.4.1 --index-url https://download.pytorch.org/whl/cpu
 
-# Instalar LangChain (cache layer separado)
-RUN pip install --no-cache-dir --timeout=600 --retries=3 \
-    langchain==0.3.14 \
-    langchain-openai==0.3.1 \
-    langchain-community==0.3.14 \
-    langgraph==0.2.62
-
-# Instalar sentence-transformers por último (maior download)
-RUN pip install --no-cache-dir --timeout=900 --retries=3 \
-    sentence-transformers==3.3.1
+# 2. Instalar demais dependências do requirements.txt
+RUN pip install --no-cache-dir --timeout=600 --retries=3 -r requirements.txt
 
 # Production stage
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 WORKDIR /app
 
@@ -76,6 +53,10 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 # Configurar permissões
 RUN chown -R appuser:appuser /app
 USER appuser
+
+# Variáveis de ambiente padrão
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
 
 # Expor porta
 EXPOSE 8000
