@@ -5,7 +5,7 @@ Endpoints para monitoramento de performance, métricas do sistema
 e dashboard básico de observabilidade.
 """
 
-from fastapi import APIRouter, HTTPException, status, Query
+from fastapi import APIRouter, HTTPException, status, Query, Depends
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
