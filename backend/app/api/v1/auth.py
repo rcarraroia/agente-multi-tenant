@@ -139,11 +139,11 @@ async def get_security_info() -> SecurityInfoResponse:
         # Verificar se há avisos de configuração
         from app.config import settings
         
-        if len(settings.JWT_SECRET) < 64:
-            security_warnings.append("JWT_SECRET tem menos de 64 caracteres")
+        if len(settings.JWT_SECRET_KEY) < 64:
+            security_warnings.append("JWT_SECRET_KEY tem menos de 64 caracteres")
         
-        if settings.JWT_ALGORITHM == "HS256" and len(settings.JWT_SECRET) < 32:
-            security_warnings.append("JWT_SECRET muito curto para HS256")
+        if settings.JWT_ALGORITHM == "HS256" and len(settings.JWT_SECRET_KEY) < 32:
+            security_warnings.append("JWT_SECRET_KEY muito curto para HS256")
         
         return SecurityInfoResponse(
             algorithm=settings.JWT_ALGORITHM,
@@ -201,7 +201,7 @@ async def generate_secure_secret(length: int = 64) -> Dict[str, str]:
             "secret": secure_secret,
             "length": len(secure_secret),
             "warning": "SALVE ESTE SECRET EM LOCAL SEGURO E CONFIGURE NO .env",
-            "environment_variable": "JWT_SECRET"
+            "environment_variable": "JWT_SECRET_KEY"
         }
         
     except HTTPException:

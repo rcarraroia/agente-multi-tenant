@@ -99,7 +99,7 @@ class ConfigurationManager:
         required_vars = {
             'SUPABASE_URL': settings.SUPABASE_URL,
             'SUPABASE_SERVICE_KEY': settings.SUPABASE_SERVICE_KEY,
-            'JWT_SECRET': settings.JWT_SECRET,
+            'JWT_SECRET_KEY': settings.JWT_SECRET_KEY,
         }
         
         # Variáveis obrigatórias apenas em produção
@@ -152,19 +152,19 @@ class ConfigurationManager:
         """Valida configurações de segurança."""
         logger.debug("🔍 Validando configurações de segurança")
         
-        # Validar JWT_SECRET
-        if settings.JWT_SECRET:
-            if len(settings.JWT_SECRET) < 32:
+        # Validar JWT_SECRET_KEY
+        if settings.JWT_SECRET_KEY:
+            if len(settings.JWT_SECRET_KEY) < 32:
                 self.validation_errors.append(
-                    "JWT_SECRET deve ter pelo menos 32 caracteres"
+                    "JWT_SECRET_KEY deve ter pelo menos 32 caracteres"
                 )
-            elif settings.JWT_SECRET in ['your-secret-key', 'secret', 'password', '123456']:
+            elif settings.JWT_SECRET_KEY in ['your-secret-key', 'secret', 'password', '123456']:
                 self.validation_errors.append(
-                    "JWT_SECRET não pode ser um valor padrão inseguro"
+                    "JWT_SECRET_KEY não pode ser um valor padrão inseguro"
                 )
-            elif self.is_production and not self._is_secure_secret(settings.JWT_SECRET):
+            elif self.is_production and not self._is_secure_secret(settings.JWT_SECRET_KEY):
                 self.validation_warnings.append(
-                    "JWT_SECRET pode não ser suficientemente seguro para produção"
+                    "JWT_SECRET_KEY pode não ser suficientemente seguro para produção"
                 )
             else:
                 logger.debug("✅ JWT_SECRET tem comprimento adequado")

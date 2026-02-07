@@ -59,7 +59,7 @@ class JWTSecurityManager:
             raise ValueError(f"Algoritmo JWT explicitamente inseguro: {settings.JWT_ALGORITHM}")
         
         # Validar secret
-        self._validate_jwt_secret(settings.JWT_SECRET_KEY)
+        self._validate_jwt_secret(settings.JWT_SECRET)
         
         # Validar Supabase JWT secret se configurado
         if settings.SUPABASE_JWT_SECRET:
@@ -123,7 +123,7 @@ class JWTSecurityManager:
             to_encode.update(additional_claims)
         
         try:
-            encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+            encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
             
             logger.debug(f"🔐 Access token criado para subject: {subject}")
             logger.debug(f"   Expira em: {expire}")
@@ -157,7 +157,7 @@ class JWTSecurityManager:
         }
         
         try:
-            encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+            encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
             
             logger.debug(f"🔄 Refresh token criado para subject: {subject}")
             logger.debug(f"   Expira em: {expire}")
@@ -206,7 +206,7 @@ class JWTSecurityManager:
             # Validar como JWT local
             payload = jwt.decode(
                 token,
-                settings.JWT_SECRET,
+                settings.JWT_SECRET_KEY,
                 algorithms=[settings.JWT_ALGORITHM]
             )
             
