@@ -8,12 +8,5 @@ python-multipart==0.0.9
 supabase==2.11.0
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-langchain==0.3.14
-langchain-openai==0.3.1
-langchain-community==0.3.14
-langgraph==0.2.62
 redis==5.2.1
-tiktoken==0.8.0
-sentence-transformers==3.3.1
-numpy==1.26.4
 structlog==24.4.0
