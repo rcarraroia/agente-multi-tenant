@@ -8,25 +8,44 @@
  * - Loading states
  */
 
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback } from 'react';
+import type { ReactNode } from 'react';
 import { X, CheckCircle, AlertCircle, Info, AlertTriangle } from 'lucide-react';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
+export type ToastVariant = 'default' | 'destructive';
 
 export interface Toast {
   id: string;
   type: ToastType;
   title: string;
+  description?: string;
   message?: string;
   duration?: number;
+  variant?: ToastVariant;
   action?: {
     label: string;
     onClick: () => void;
   };
 }
 
+// Legacy toast function interface for compatibility
+export interface ToastFunction {
+  (props: {
+    title: string;
+    description?: string;
+    variant?: ToastVariant;
+    duration?: number;
+    action?: {
+      label: string;
+      onClick: () => void;
+    };
+  }): void;
+}
+
 interface ToastContextType {
   toasts: Toast[];
+  toast: ToastFunction;
   showToast: (toast: Omit<Toast, 'id'>) => void;
   hideToast: (id: string) => void;
   showSuccess: (title: string, message?: string) => void;
@@ -74,6 +93,18 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
     setToasts(prev => prev.filter(toast => toast.id !== id));
   }, []);
 
+  // Legacy toast function for compatibility
+  const toast: ToastFunction = useCallback((props) => {
+    const type: ToastType = props.variant === 'destructive' ? 'error' : 'success';
+    showToast({
+      type,
+      title: props.title,
+      message: props.description,
+      duration: props.duration,
+      action: props.action,
+    });
+  }, [showToast]);
+
   const showSuccess = useCallback((title: string, message?: string) => {
     showToast({ type: 'success', title, message });
   }, [showToast]);
@@ -93,6 +124,7 @@ export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
   return (
     <ToastContext.Provider value={{
       toasts,
+      toast,
       showToast,
       hideToast,
       showSuccess,
@@ -172,6 +204,11 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onHide }) => {
               {toast.message}
             </p>
           )}
+          {toast.description && (
+            <p className="text-sm text-gray-600 mt-1">
+              {toast.description}
+            </p>
+          )}
           {toast.action && (
             <button
               onClick={toast.action.onClick}
@@ -197,16 +234,16 @@ export const useAsyncOperation = () => {
   const { showSuccess, showError, showInfo } = useToast();
   const [loading, setLoading] = useState(false);
 
-  const execute = useCallback(async <T>(
-    operation: () => Promise<T>,
+  const execute = useCallback(async (
+    operation: () => Promise<any>,
     options: {
       loadingMessage?: string;
       successMessage?: string;
       errorMessage?: string;
-      onSuccess?: (result: T) => void;
+      onSuccess?: (result: any) => void;
       onError?: (error: Error) => void;
     } = {}
-  ): Promise<T | null> => {
+  ): Promise<any | null> => {
     try {
       setLoading(true);
       

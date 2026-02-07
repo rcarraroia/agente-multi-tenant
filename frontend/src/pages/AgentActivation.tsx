@@ -9,7 +9,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bot, User, MessageSquare, Settings, CheckCircle, AlertCircle } from 'lucide-react';
 import { useToast, useAsyncOperation } from '../components/ui/toast';
-import { ButtonLoading, LoadingMessage, CardSkeleton } from '../components/ui/loading';
+import { ButtonLoading, CardSkeleton } from '../components/ui/loading';
 import { agentService } from '../services/agent.service';
 
 interface AgentActivationForm {
@@ -32,7 +32,7 @@ interface ActivationStatus {
 
 const AgentActivation: React.FC = () => {
   const navigate = useNavigate();
-  const { showSuccess, showError, showWarning } = useToast();
+  const { showError } = useToast();
   const { execute: executeAsync, loading: asyncLoading } = useAsyncOperation();
   
   const [form, setForm] = useState<AgentActivationForm>({
@@ -126,7 +126,7 @@ const AgentActivation: React.FC = () => {
       return;
     }
 
-    const result = await executeAsync(
+    await executeAsync(
       () => agentService.deactivateAgent('Desativado pelo usuário'),
       {
         loadingMessage: 'Desativando agente...',
