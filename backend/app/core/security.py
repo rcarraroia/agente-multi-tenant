@@ -59,7 +59,7 @@ class JWTSecurityManager:
             raise ValueError(f"Algoritmo JWT explicitamente inseguro: {settings.JWT_ALGORITHM}")
         
         # Validar secret
-        self._validate_jwt_secret(settings.JWT_SECRET)
+        self._validate_jwt_secret(settings.JWT_SECRET_KEY)
         
         # Validar Supabase JWT secret se configurado
         if settings.SUPABASE_JWT_SECRET:
