@@ -16,7 +16,7 @@ from app.core.logging import get_structured_logger, PerformanceLogger, AuditLogg
 from app.services.external_service_validator import external_service_validator
 from app.services.consistency_monitor import ConsistencyMonitor
 from app.config import settings
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user_id
 
 logger = get_structured_logger(__name__)
 router = APIRouter()
@@ -633,7 +633,7 @@ async def trigger_consistency_check():
 @router.post("/consistency/sync")
 async def trigger_consistency_sync(
     dry_run: bool = Query(True, description="Executar em modo dry-run (sem alterações)"),
-    current_user: Dict = Depends(get_current_user)
+    current_user_id: str = Depends(get_current_user_id)
 ):
     """Dispara uma sincronização para resolver inconsistências."""
     try:
@@ -642,7 +642,7 @@ async def trigger_consistency_sync(
         # Log de auditoria
         logger.info(
             "consistency_sync_requested",
-            user_id=current_user.get("sub"),
+            user_id=current_user_id,
             dry_run=dry_run
         )
         
