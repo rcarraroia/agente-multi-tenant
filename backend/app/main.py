@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.config import settings
@@ -99,80 +99,31 @@ app.add_middleware(LoggingMiddleware)
 from app.api.v1.router import api_router
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
-# CORS Configuration com validação aprimorada
+# CORS Configuration - Configuração simplificada e robusta
 cors_origins = settings.cors_origins_list
-is_production = settings.ENVIRONMENT.lower() == "production"
 
-# Middleware customizado para log de CORS rejeitados
-class CORSLoggingMiddleware:
-    def __init__(self, app, origins):
-        self.app = app
-        self.allowed_origins = origins
-        
-    async def __call__(self, scope, receive, send):
-        if scope["type"] == "http":
-            request = Request(scope, receive)
-            origin = request.headers.get("origin")
-            
-            # Log tentativas de CORS
-            if origin:
-                if self.allowed_origins == ["*"] or origin in self.allowed_origins:
-                    logger.debug(f"✅ CORS permitido para origem: {origin}")
-                else:
-                    logger.warning(f"❌ CORS rejeitado para origem: {origin}")
-                    logger.warning(f"   Origens permitidas: {self.allowed_origins}")
-        
-        await self.app(scope, receive, send)
+logger.info(f"🌐 Configurando CORS para ambiente: {settings.ENVIRONMENT}")
+logger.info(f"   Origens configuradas: {len(cors_origins)}")
 
-if cors_origins and cors_origins != ["*"]:
-    logger.info(f"🌐 CORS configurado para {len(cors_origins)} origens específicas")
-    logger.debug(f"   Origens permitidas: {cors_origins}")
+if cors_origins:
+    logger.info(f"   Origens permitidas: {cors_origins}")
     
-    # Configuração restritiva para produção
+    # Configuração CORS simplificada e robusta
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        allow_headers=[
-            "Accept",
-            "Accept-Language",
-            "Content-Language",
-            "Content-Type",
-            "Authorization",
-            "X-Requested-With",
-            "X-Tenant-ID",
-            "X-Affiliate-ID",
-            "X-Agent-Name",
-            "X-Request-Source"
-        ],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+        allow_headers=["*"],
         expose_headers=["X-Total-Count", "X-Request-ID"],
         max_age=600,  # 10 minutos de cache para preflight
     )
     
-    # Adicionar middleware de logging
-    app.add_middleware(CORSLoggingMiddleware, origins=cors_origins)
-    
-elif is_production:
-    # Em produção, NUNCA permitir CORS aberto
-    logger.error("❌ CORS não configurado adequadamente para produção!")
-    logger.error("   Configure CORS_ORIGINS com origens específicas")
-    
-    # Configuração mínima de segurança
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["https://slimquality.com.br"],  # Fallback seguro
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization"],
-    )
-    
-    logger.warning("⚠️ Usando configuração CORS de fallback para produção")
+    logger.info("✅ CORS configurado com sucesso")
     
 else:
-    # Desenvolvimento: CORS permissivo com logs
-    logger.warning("⚠️ CORS configurado em modo permissivo (desenvolvimento)")
-    logger.warning("   Todas as origens são permitidas - NÃO usar em produção!")
+    # Fallback para desenvolvimento
+    logger.warning("⚠️ CORS_ORIGINS não configurado - usando modo permissivo")
     
     app.add_middleware(
         CORSMiddleware,
@@ -182,30 +133,6 @@ else:
         allow_headers=["*"],
     )
 
-@app.get("/health")
-def health_check():
-    """
-    Health check endpoint com informações de configuração.
-    Não expõe secrets, apenas status geral.
-    """
-    logger.debug("Health check solicitado")
-    
-    config_summary = config_manager.get_configuration_summary()
-    
-    return {
-        "status": "ok",
-        "environment": settings.ENVIRONMENT,
-        "version": "1.0.0",
-        "configuration": {
-            "database_connected": config_summary["has_supabase_config"],
-            "ai_enabled": config_summary["has_openai_config"],
-            "whatsapp_enabled": config_summary["has_evolution_config"],
-            "chat_enabled": config_summary["has_chatwoot_config"],
-            "cors_origins_count": config_summary["cors_origins_count"],
-            "is_production": config_summary["is_production"]
-        }
-    }
-
 @app.get("/")
 def root():
     """Root endpoint com informações básicas."""
@@ -214,5 +141,6 @@ def root():
         "message": f"Welcome to {settings.PROJECT_NAME}",
         "version": "1.0.0",
         "environment": settings.ENVIRONMENT,
-        "api_docs": f"{settings.API_V1_STR}/docs"
+        "api_docs": f"{settings.API_V1_STR}/docs",
+        "health_check": f"{settings.API_V1_STR}/health"
     }
