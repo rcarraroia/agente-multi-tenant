@@ -1,4 +1,4 @@
-# Agente Multi-Tenant Backend - Otimizado para EasyPanel (CPU-ONLY)
+# Agente Multi-Tenant Backend - Otimizado para EasyPanel (CPU-ONLY) - VERSÃO CORS CORRIGIDA
 # Build stage
 FROM python:3.11-slim-bookworm as builder
 
