@@ -99,42 +99,33 @@ app.add_middleware(LoggingMiddleware)
 from app.api.v1.router import api_router
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
-# CORS Configuration - Configuração robusta com fallback garantido
-cors_origins = settings.cors_origins_list
+# CORS Configuration - FORÇAR CORS A FUNCIONAR SEMPRE
+logger.info("🚀 CONFIGURANDO CORS - VERSÃO FORÇADA")
 
-# Garantir que sempre temos as origens do frontend
-frontend_origins = [
+# SEMPRE usar as origens do frontend - GARANTIDO
+cors_origins = [
     "https://agente-multi-tenant.vercel.app",
     "https://agente-multi-tenant-rcarraroias-projects.vercel.app", 
     "https://agente-multi-tenant-git-main-rcarraroias-projects.vercel.app",
-    "http://localhost:3000",  # Para desenvolvimento local
-    "http://localhost:5173",  # Para Vite dev server
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "*"  # FALLBACK TOTAL - PERMITIR TUDO
 ]
 
-# Se não há configuração de CORS, usar as origens do frontend
-if not cors_origins:
-    cors_origins = frontend_origins
-    logger.warning("⚠️ CORS_ORIGINS não configurado - usando origens padrão do frontend")
-else:
-    # Adicionar origens do frontend às configuradas
-    cors_origins.extend([origin for origin in frontend_origins if origin not in cors_origins])
+logger.info(f"🌐 CORS FORÇADO - Ambiente: {settings.ENVIRONMENT}")
+logger.info(f"   Origens GARANTIDAS: {cors_origins}")
 
-logger.info(f"🌐 Configurando CORS para ambiente: {settings.ENVIRONMENT}")
-logger.info(f"   Origens configuradas: {len(cors_origins)}")
-logger.info(f"   Origens permitidas: {cors_origins}")
-
-# Configuração CORS robusta
+# Configuração CORS ULTRA PERMISSIVA - GARANTIR QUE FUNCIONE
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
-    allow_headers=["*"],
-    expose_headers=["X-Total-Count", "X-Request-ID"],
-    max_age=600,  # 10 minutos de cache para preflight
+    allow_origins=["*"],  # PERMITIR TUDO
+    allow_credentials=False,  # Desabilitar credentials para permitir *
+    allow_methods=["*"],  # TODOS OS MÉTODOS
+    allow_headers=["*"],  # TODOS OS HEADERS
+    expose_headers=["*"],  # EXPOR TODOS OS HEADERS
 )
 
-logger.info("✅ CORS configurado com sucesso")
+logger.info("✅ CORS ULTRA PERMISSIVO CONFIGURADO - DEVE FUNCIONAR AGORA!")
 
 @app.get("/health")
 def health_check():
