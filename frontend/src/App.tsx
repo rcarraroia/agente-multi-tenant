@@ -9,7 +9,7 @@ import WhatsAppConnection from './pages/WhatsAppConnection';
 import KnowledgeBase from './pages/KnowledgeBase';
 import CRMKanban from './pages/CRMKanban';
 import ChatMonitor from './pages/ChatMonitor';
-import { Toaster } from './components/ui/toaster';
+import { ToastProvider } from './components/ui/toast';
 import './index.css';
 
 const queryClient = new QueryClient({
@@ -25,25 +25,26 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <Router>
-          <Routes>
-            {/* Protected Routes */}
-            <Route element={<ProtectedRoute />}>
-              <Route element={<DashboardLayout />}>
-                <Route path="/" element={<HomePage />} />
-                <Route path="/settings" element={<Settings />} />
-                <Route path="/whatsapp" element={<WhatsAppConnection />} />
-                <Route path="/knowledge" element={<KnowledgeBase />} />
-                <Route path="/crm" element={<CRMKanban />} />
-                <Route path="/chats" element={<ChatMonitor />} />
+        <ToastProvider>
+          <Router>
+            <Routes>
+              {/* Protected Routes */}
+              <Route element={<ProtectedRoute />}>
+                <Route element={<DashboardLayout />}>
+                  <Route path="/" element={<HomePage />} />
+                  <Route path="/settings" element={<Settings />} />
+                  <Route path="/whatsapp" element={<WhatsAppConnection />} />
+                  <Route path="/knowledge" element={<KnowledgeBase />} />
+                  <Route path="/crm" element={<CRMKanban />} />
+                  <Route path="/chats" element={<ChatMonitor />} />
+                </Route>
               </Route>
-            </Route>
 
-            {/* Fallback */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Router>
-        <Toaster />
+              {/* Fallback */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Router>
+        </ToastProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
