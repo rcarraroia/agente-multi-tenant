@@ -133,6 +133,15 @@ else:
         allow_headers=["*"],
     )
 
+@app.get("/health")
+def health_check():
+    """Health check endpoint para EasyPanel."""
+    return {
+        "status": "ok",
+        "environment": settings.ENVIRONMENT,
+        "version": "1.0.0"
+    }
+
 @app.get("/")
 def root():
     """Root endpoint com informações básicas."""
