@@ -99,39 +99,42 @@ app.add_middleware(LoggingMiddleware)
 from app.api.v1.router import api_router
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
-# CORS Configuration - Configuração simplificada e robusta
+# CORS Configuration - Configuração robusta com fallback garantido
 cors_origins = settings.cors_origins_list
+
+# Garantir que sempre temos as origens do frontend
+frontend_origins = [
+    "https://agente-multi-tenant.vercel.app",
+    "https://agente-multi-tenant-rcarraroias-projects.vercel.app", 
+    "https://agente-multi-tenant-git-main-rcarraroias-projects.vercel.app",
+    "http://localhost:3000",  # Para desenvolvimento local
+    "http://localhost:5173",  # Para Vite dev server
+]
+
+# Se não há configuração de CORS, usar as origens do frontend
+if not cors_origins:
+    cors_origins = frontend_origins
+    logger.warning("⚠️ CORS_ORIGINS não configurado - usando origens padrão do frontend")
+else:
+    # Adicionar origens do frontend às configuradas
+    cors_origins.extend([origin for origin in frontend_origins if origin not in cors_origins])
 
 logger.info(f"🌐 Configurando CORS para ambiente: {settings.ENVIRONMENT}")
 logger.info(f"   Origens configuradas: {len(cors_origins)}")
+logger.info(f"   Origens permitidas: {cors_origins}")
 
-if cors_origins:
-    logger.info(f"   Origens permitidas: {cors_origins}")
-    
-    # Configuração CORS simplificada e robusta
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=cors_origins,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-        allow_headers=["*"],
-        expose_headers=["X-Total-Count", "X-Request-ID"],
-        max_age=600,  # 10 minutos de cache para preflight
-    )
-    
-    logger.info("✅ CORS configurado com sucesso")
-    
-else:
-    # Fallback para desenvolvimento
-    logger.warning("⚠️ CORS_ORIGINS não configurado - usando modo permissivo")
-    
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+# Configuração CORS robusta
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
+    allow_headers=["*"],
+    expose_headers=["X-Total-Count", "X-Request-ID"],
+    max_age=600,  # 10 minutos de cache para preflight
+)
+
+logger.info("✅ CORS configurado com sucesso")
 
 @app.get("/health")
 def health_check():
