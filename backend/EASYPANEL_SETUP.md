@@ -34,7 +34,7 @@ SUPABASE_JWT_SECRET=HOwlz7ir1R2EvyMSy9yj+HSh25RtIVzSeORRcM9T1MlCiux5w6wGfYf9dLby
 REDIS_URL=redis://localhost:6379
 
 # OpenAI
-OPENAI_API_KEY=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
+OPENAI_API_KEY=sua-chave-openai-aqui
 
 # Evolution API
 EVOLUTION_API_URL=https://slimquality-evolution-api.wpjtfd.easypanel.host
