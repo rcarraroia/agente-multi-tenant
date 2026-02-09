@@ -438,16 +438,6 @@ async def debug_tenant_resolution(request: Request):
             "error_type": type(e).__name__,
             "help": "Erro interno no endpoint de debug tenant"
         }
-                "tenant_resolution": "successful",
-                "tenant": {
-                    "id": tenant.id,
-                    "affiliate_id": tenant.affiliate_id,
-                    "status": tenant.status,
-                    "agent_name": tenant.agent_name,
-                    "whatsapp_status": tenant.whatsapp_status
-                }
-            }
-            
         except Exception as tenant_error:
             # Se falhar, tentar pelo menos validar o token
             try:
