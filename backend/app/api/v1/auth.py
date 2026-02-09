@@ -279,7 +279,91 @@ async def debug_token_validation(request: Request):
             "help": "Erro interno no endpoint de debug"
         }
 
+@router.get("/debug/generate-test-token")
+async def generate_test_token():
+    """
+    ENDPOINT TEMPORÁRIO - Gerar token de teste com dados reais
+    USAR APENAS PARA DEBUG - REMOVER APÓS TESTES
+    """
+    try:
+        # Usar dados reais do banco (João Bosco)
+        test_user_id = "437822c0-c0a0-452b-843f-cc9c3631874b"
+        test_email = "jb-assis@hotmail.com"
+        
+        # Criar token Supabase-like
+        from datetime import datetime, timedelta
+        import time
+        
+        # Payload similar ao Supabase Auth
+        payload = {
+            "aud": "authenticated",
+            "exp": int(time.time()) + (24 * 60 * 60),  # 24 horas
+            "iat": int(time.time()),
+            "iss": "https://vtynmmtuvxreiwcxxlma.supabase.co/auth/v1",
+            "sub": test_user_id,
+            "email": test_email,
+            "phone": "",
+            "app_metadata": {
+                "provider": "email",
+                "providers": ["email"]
+            },
+            "user_metadata": {
+                "email": test_email,
+                "email_verified": False,
+                "phone_verified": False,
+                "sub": test_user_id
+            },
+            "role": "authenticated",
+            "aal": "aal1",
+            "amr": [{"method": "password", "timestamp": int(time.time())}],
+            "session_id": "test-session-id"
+        }
+        
+        # Gerar token usando SUPABASE_JWT_SECRET
+        from app.config import settings
+        from jose import jwt
+        
+        if not settings.SUPABASE_JWT_SECRET:
+            return {
+                "error": "SUPABASE_JWT_SECRET não configurado",
+                "help": "Configure SUPABASE_JWT_SECRET no ambiente"
+            }
+        
+        token = jwt.encode(
+            payload,
+            settings.SUPABASE_JWT_SECRET,
+            algorithm="HS256"
+        )
+        
+        return {
+            "status": "success",
+            "test_token": token,
+            "user_data": {
+                "user_id": test_user_id,
+                "email": test_email,
+                "name": "João Bosco de Assis"
+            },
+            "usage": {
+                "header": f"Authorization: Bearer {token}",
+                "test_endpoints": [
+                    "/api/v1/auth/debug/token",
+                    "/api/v1/auth/debug/tenant",
+                    "/api/v1/whatsapp/status",
+                    "/api/v1/whatsapp/connect"
+                ]
+            },
+            "warning": "ESTE É UM TOKEN DE TESTE - REMOVER ENDPOINT APÓS DEBUG"
+        }
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e),
+            "error_type": type(e).__name__
+        }
+
 @router.get("/debug/tenant")
+async def debug_tenant_resolution(request: Request):
 async def debug_tenant_resolution(request: Request):
     """
     DEBUG ENDPOINT - Testar resolução de tenant
