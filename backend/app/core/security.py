@@ -171,6 +171,7 @@ class JWTSecurityManager:
     def verify_token(self, token: str, token_type: str = "access") -> Dict[str, Any]:
         """
         Verifica e decodifica um token JWT com validações de segurança.
+        Suporta tokens Supabase Auth e JWT locais.
         
         Args:
             token: Token JWT para verificar
@@ -187,7 +188,7 @@ class JWTSecurityManager:
             raise CredentialsException(detail="Token não fornecido")
         
         try:
-            # Primeiro, tenta validar como token Supabase Auth
+            # PRIORIDADE 1: Tentar validar como token Supabase Auth (SSO)
             if settings.SUPABASE_JWT_SECRET:
                 try:
                     payload = jwt.decode(
@@ -197,35 +198,50 @@ class JWTSecurityManager:
                         audience="authenticated"
                     )
                     
-                    logger.debug("✅ Token Supabase Auth validado com sucesso")
-                    return payload
+                    # Validar se é um token Supabase válido
+                    if payload.get("aud") == "authenticated" and payload.get("sub"):
+                        logger.debug("✅ Token Supabase Auth validado com sucesso")
+                        logger.debug(f"   User ID: {payload.get('sub')}")
+                        logger.debug(f"   Email: {payload.get('email', 'N/A')}")
+                        logger.debug(f"   Expires: {datetime.fromtimestamp(payload.get('exp', 0))}")
+                        return payload
                     
-                except JWTError:
-                    logger.debug("🔄 Token não é Supabase Auth, tentando JWT local")
+                except JWTError as supabase_error:
+                    logger.debug(f"🔄 Token não é Supabase Auth válido: {str(supabase_error)}")
+                except Exception as supabase_error:
+                    logger.debug(f"🔄 Erro ao validar token Supabase: {str(supabase_error)}")
             
-            # Validar como JWT local
-            payload = jwt.decode(
-                token,
-                settings.JWT_SECRET_KEY,
-                algorithms=[settings.JWT_ALGORITHM]
-            )
+            # PRIORIDADE 2: Tentar validar como JWT local
+            try:
+                payload = jwt.decode(
+                    token,
+                    settings.JWT_SECRET_KEY,
+                    algorithms=[settings.JWT_ALGORITHM]
+                )
+                
+                # Validar tipo do token se especificado
+                if token_type and payload.get("type") != token_type:
+                    logger.warning(f"⚠️ Tipo de token incorreto. Esperado: {token_type}, Recebido: {payload.get('type')}")
+                    raise CredentialsException(detail=f"Tipo de token incorreto")
+                
+                # Validar expiração (jose já faz isso, mas vamos logar)
+                exp = payload.get("exp")
+                if exp:
+                    exp_datetime = datetime.fromtimestamp(exp)
+                    if exp_datetime < datetime.utcnow():
+                        logger.warning(f"⚠️ Token expirado: {exp_datetime}")
+                        raise CredentialsException(detail="Token expirado")
+                
+                logger.debug(f"✅ Token JWT local validado com sucesso (tipo: {payload.get('type', 'unknown')})")
+                return payload
+                
+            except JWTError as local_error:
+                logger.debug(f"🔄 Token não é JWT local válido: {str(local_error)}")
+                raise CredentialsException(detail="Token inválido")
             
-            # Validar tipo do token se especificado
-            if token_type and payload.get("type") != token_type:
-                logger.warning(f"⚠️ Tipo de token incorreto. Esperado: {token_type}, Recebido: {payload.get('type')}")
-                raise CredentialsException(detail=f"Tipo de token incorreto")
-            
-            # Validar expiração (jose já faz isso, mas vamos logar)
-            exp = payload.get("exp")
-            if exp:
-                exp_datetime = datetime.fromtimestamp(exp)
-                if exp_datetime < datetime.utcnow():
-                    logger.warning(f"⚠️ Token expirado: {exp_datetime}")
-                    raise CredentialsException(detail="Token expirado")
-            
-            logger.debug(f"✅ Token JWT local validado com sucesso (tipo: {payload.get('type', 'unknown')})")
-            return payload
-            
+        except CredentialsException:
+            # Re-raise CredentialsException sem modificar
+            raise
         except JWTError as e:
             logger.warning(f"⚠️ Token JWT inválido: {str(e)}")
             raise CredentialsException(detail="Token inválido")
