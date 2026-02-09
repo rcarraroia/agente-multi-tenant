@@ -98,7 +98,8 @@ def get_current_affiliate_id(
                 error_type="not_affiliate"
             )
         
-        affiliate_id = UUID(response.data[0]["id"])
+        id_value = response.data[0]["id"]
+        affiliate_id = id_value if isinstance(id_value, UUID) else UUID(id_value)
         logger.debug(f"✅ Afiliado identificado: {affiliate_id} (user: {user_id})")
         
         return affiliate_id

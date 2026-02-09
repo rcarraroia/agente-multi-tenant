@@ -121,7 +121,8 @@ class TenantResolver:
                 detail=f"Usuário {user_id} não é um afiliado cadastrado"
             )
         
-        return UUID(response.data[0]["id"])
+        id_value = response.data[0]["id"]
+        return id_value if isinstance(id_value, UUID) else UUID(id_value)
     
     def _get_tenant_by_affiliate_id(self, affiliate_id: UUID) -> Tenant:
         """
