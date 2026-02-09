@@ -282,13 +282,14 @@ async def debug_token_validation(request: Request):
 @router.get("/debug/generate-test-token")
 async def generate_test_token():
     """
-    ENDPOINT TEMPORÁRIO - Gerar token de teste com dados reais
+    ENDPOINT TEMPORÁRIO - Gerar token de teste com dados reais DA BEATRIZ
     USAR APENAS PARA DEBUG - REMOVER APÓS TESTES
     """
     try:
-        # Usar dados reais do banco (João Bosco)
-        test_user_id = "437822c0-c0a0-452b-843f-cc9c3631874b"
-        test_email = "jb-assis@hotmail.com"
+        # DADOS CORRETOS DA BEATRIZ (usuária com acesso ao painel)
+        test_user_id = "71d06370-6757-4d35-a91f-7c2b518bc0af"
+        test_email = "bia.aguilar@hotmail.com"
+        test_name = "Beatriz Fatima Almeida Carraro"
         
         # Criar token Supabase-like
         from datetime import datetime, timedelta
@@ -316,7 +317,7 @@ async def generate_test_token():
             "role": "authenticated",
             "aal": "aal1",
             "amr": [{"method": "password", "timestamp": int(time.time())}],
-            "session_id": "test-session-id"
+            "session_id": "beatriz-test-session"
         }
         
         # Gerar token usando SUPABASE_JWT_SECRET
@@ -341,18 +342,19 @@ async def generate_test_token():
             "user_data": {
                 "user_id": test_user_id,
                 "email": test_email,
-                "name": "João Bosco de Assis"
+                "name": test_name,
+                "note": "BEATRIZ - Usuária com acesso ao painel de agentes"
             },
             "usage": {
                 "header": f"Authorization: Bearer {token}",
                 "test_endpoints": [
                     "/api/v1/auth/debug/token",
-                    "/api/v1/auth/debug/tenant",
+                    "/api/v1/auth/debug/tenant", 
                     "/api/v1/whatsapp/status",
                     "/api/v1/whatsapp/connect"
                 ]
             },
-            "warning": "ESTE É UM TOKEN DE TESTE - REMOVER ENDPOINT APÓS DEBUG"
+            "warning": "TOKEN DA BEATRIZ - REMOVER ENDPOINT APÓS DEBUG"
         }
         
     except Exception as e:
