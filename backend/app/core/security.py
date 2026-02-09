@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import Any, Union, Optional, Dict, List
 from jose import jwt, JWTError
 from passlib.context import CryptContext
@@ -106,15 +106,15 @@ class JWTSecurityManager:
             str: Token JWT assinado
         """
         if expires_delta:
-            expire = datetime.utcnow() + expires_delta
+            expire = datetime.now(UTC) + expires_delta
         else:
-            expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+            expire = datetime.now(UTC) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         
         # Claims obrigatórios
         to_encode = {
             "sub": str(subject),
             "exp": expire,
-            "iat": datetime.utcnow(),
+            "iat": datetime.now(UTC),
             "type": "access"
         }
         
@@ -146,12 +146,12 @@ class JWTSecurityManager:
             str: Refresh token JWT
         """
         # Refresh tokens têm validade muito maior (30 dias)
-        expire = datetime.utcnow() + timedelta(days=30)
+        expire = datetime.now(UTC) + timedelta(days=30)
         
         to_encode = {
             "sub": str(subject),
             "exp": expire,
-            "iat": datetime.utcnow(),
+            "iat": datetime.now(UTC),
             "type": "refresh",
             "jti": secrets.token_urlsafe(32)  # Unique token ID
         }
@@ -228,7 +228,7 @@ class JWTSecurityManager:
                 exp = payload.get("exp")
                 if exp:
                     exp_datetime = datetime.fromtimestamp(exp)
-                    if exp_datetime < datetime.utcnow():
+                    if exp_datetime < datetime.now(UTC):
                         logger.warning(f"⚠️ Token expirado: {exp_datetime}")
                         raise CredentialsException(detail="Token expirado")
                 
@@ -286,26 +286,35 @@ class JWTSecurityManager:
             logger.error(f"💥 Erro ao renovar tokens: {str(e)}")
             raise CredentialsException(detail="Erro ao renovar tokens")
     
-    def get_token_info(self, token: str) -> Dict[str, Any]:
+    def get_token_info(self, token: str, verify_signature: bool = False) -> Dict[str, Any]:
         """
-        Obtém informações sobre um token sem validar assinatura (para debug).
+        Obtém informações sobre um token JWT.
         
         Args:
             token: Token JWT
+            verify_signature: Se True, verifica assinatura (padrão: False para debug)
             
         Returns:
             Dict: Informações do token
+            
+        Warning:
+            Por padrão não verifica assinatura - use apenas para debug!
+            Para validação real, use verify_token().
         """
         try:
-            # Decodificar sem verificar assinatura (apenas para info)
-            payload = jwt.decode(token, options={"verify_signature": False})
+            if verify_signature:
+                # Verificar assinatura usando o método seguro
+                payload = self.verify_token(token)
+            else:
+                # Decodificar sem verificar assinatura (apenas para debug)
+                payload = jwt.decode(token, options={"verify_signature": False})
             
             info = {
                 "subject": payload.get("sub"),
                 "type": payload.get("type", "unknown"),
                 "issued_at": payload.get("iat"),
                 "expires_at": payload.get("exp"),
-                "algorithm": "unknown"  # Não podemos determinar sem header
+                "algorithm": "unknown" if not verify_signature else "verified"
             }
             
             # Converter timestamps para datetime legível
@@ -314,7 +323,7 @@ class JWTSecurityManager:
             
             if info["expires_at"]:
                 info["expires_at_readable"] = datetime.fromtimestamp(info["expires_at"]).isoformat()
-                info["is_expired"] = datetime.fromtimestamp(info["expires_at"]) < datetime.utcnow()
+                info["is_expired"] = datetime.fromtimestamp(info["expires_at"]) < datetime.now(UTC)
             
             return info
             

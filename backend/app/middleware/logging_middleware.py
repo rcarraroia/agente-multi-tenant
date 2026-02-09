@@ -19,7 +19,7 @@ from app.core.logging import (
     correlation_id_var, 
     request_context_var,
     PerformanceLogger,
-    AuditLogger
+    AuditLogger as CoreAuditLogger
 )
 
 class LoggingMiddleware(BaseHTTPMiddleware):
@@ -31,7 +31,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.logger = get_structured_logger('request_middleware')
         self.performance_logger = PerformanceLogger()
-        self.audit_logger = AuditLogger()
+        self.audit_logger = CoreAuditLogger()
         
         # Endpoints que não devem ser logados (para evitar spam)
         self.skip_logging_paths = {
@@ -110,15 +110,6 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                 user_id=self._extract_user_id_from_request(request)
             )
             
-            # Registrar métrica no dashboard (removido para evitar import circular)
-            # record_request_metric(
-            #     method=method,
-            #     path=path,
-            #     duration_ms=duration_ms,
-            #     status_code=response.status_code,
-            #     user_id=self._extract_user_id_from_request(request)
-            # )
-            
             # Log de auditoria para endpoints sensíveis
             if self._is_sensitive_endpoint(path):
                 self.audit_logger.log_api_access(
@@ -155,15 +146,6 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                 status_code=500,  # Assumir 500 para exceções não tratadas
                 user_id=self._extract_user_id_from_request(request)
             )
-            
-            # Registrar métrica de erro no dashboard (removido para evitar import circular)
-            # record_request_metric(
-            #     method=method,
-            #     path=path,
-            #     duration_ms=duration_ms,
-            #     status_code=500,
-            #     user_id=self._extract_user_id_from_request(request)
-            # )
             
             # Re-raise a exceção
             raise
@@ -225,7 +207,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
     
     def __init__(self, app):
         super().__init__(app)
-        self.audit_logger = AuditLogger()
+        self.audit_logger = CoreAuditLogger()
     
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         # Detectar tentativas de acesso suspeitas
@@ -323,47 +305,4 @@ class AuditMiddleware(BaseHTTPMiddleware):
         except Exception:
             return None
 
-# Extensões para AuditLogger
-class AuditLogger:
-    """Extensão do AuditLogger com métodos específicos do middleware."""
-    
-    def __init__(self):
-        from app.core.logging import get_structured_logger
-        self.logger = get_structured_logger('security_audit')
-    
-    def log_security_incident(self, incident_type: str, client_ip: str, 
-                             path: str, details: dict = None):
-        """Log de incidente de segurança."""
-        self.logger.error(
-            f"Security incident detected: {incident_type}",
-            incident_type=incident_type,
-            client_ip=client_ip,
-            path=path,
-            details=details or {},
-            severity='high'
-        )
-    
-    def log_access_denied(self, path: str, method: str, status_code: int,
-                         client_ip: str, user_id: str = None):
-        """Log de acesso negado."""
-        self.logger.warning(
-            f"Access denied: {method} {path} - {status_code}",
-            path=path,
-            method=method,
-            status_code=status_code,
-            client_ip=client_ip,
-            user_id=user_id,
-            audit_type='access_denied'
-        )
-    
-    def log_server_error(self, path: str, method: str, status_code: int,
-                        client_ip: str):
-        """Log de erro de servidor."""
-        self.logger.error(
-            f"Server error: {method} {path} - {status_code}",
-            path=path,
-            method=method,
-            status_code=status_code,
-            client_ip=client_ip,
-            audit_type='server_error'
-        )
+# Extensões removidas - usando apenas AuditLogger do core

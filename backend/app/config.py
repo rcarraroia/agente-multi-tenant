@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import validator
 from typing import Optional
 
 class Settings(BaseSettings):
@@ -14,12 +15,11 @@ class Settings(BaseSettings):
     # Supabase
     SUPABASE_URL: str
     SUPABASE_SERVICE_KEY: str
-    SUPABASE_ANON_KEY: Optional[str] = None
 
     # Security
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60  # 1 hour
     BACKEND_CORS_ORIGINS: list[str] = []
     CORS_ORIGINS: str = ""  # Comma-separated origins from .env
     
@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     
     # Supabase Auth (para validar tokens JWT do Slim Quality)
     SUPABASE_JWT_SECRET: Optional[str] = None  # Obtido em Supabase Dashboard > Settings > API > JWT Secret
+    
+    @validator('SUPABASE_JWT_SECRET')
+    def validate_jwt_secret(cls, v, values):
+        if values.get('ENVIRONMENT') == 'production' and not v:
+            raise ValueError('SUPABASE_JWT_SECRET é obrigatório em produção')
+        return v
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379"
@@ -49,5 +55,10 @@ class Settings(BaseSettings):
     CHATWOOT_API_KEY: Optional[str] = None
     CHATWOOT_ADMIN_TOKEN: Optional[str] = None
     CHATWOOT_ACCOUNT_ID: Optional[str] = None
+
+    # Circuit Breaker Configuration
+    CIRCUIT_BREAKER_FAILURE_THRESHOLD: int = 5
+    CIRCUIT_BREAKER_TIMEOUT: float = 30.0
+    CIRCUIT_BREAKER_RECOVERY_TIMEOUT: int = 60
 
 settings = Settings()

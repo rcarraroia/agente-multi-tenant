@@ -7,16 +7,72 @@ extraindo o affiliate_id do token e resolvendo o tenant correspondente.
 Substitui completamente qualquer sistema baseado em subdomain.
 """
 
+import json
 from typing import Optional
 from uuid import UUID
+from functools import wraps
 from fastapi import Request
 from jose import jwt, JWTError
+import redis
 
 from app.config import settings
 from app.core.security import verify_token
 from app.core.exceptions import CredentialsException, EntityNotFoundException
 from app.db.supabase import get_supabase
 from app.schemas.tenant import Tenant
+
+
+def cache_tenant(ttl=300):  # 5 minutos
+    """
+    Decorator para cache de tenant resolution com TTL.
+    
+    Args:
+        ttl: Time to live em segundos (default: 5 minutos)
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(self, token: str):
+            # Extrair user_id do token para usar como chave de cache
+            try:
+                payload = verify_token(token)
+                user_id = payload.get("sub")
+                if not user_id:
+                    # Se não conseguir extrair user_id, não usar cache
+                    return func(self, token)
+                
+                cache_key = f"tenant:resolution:{user_id}"
+                
+                # Tentar buscar do cache se Redis disponível
+                if self.redis_client:
+                    try:
+                        cached = self.redis_client.get(cache_key)
+                        if cached:
+                            tenant_data = json.loads(cached)
+                            return Tenant.model_validate(tenant_data)
+                    except Exception:
+                        # Se cache falhar, continuar sem cache
+                        pass
+                
+                # Buscar do banco
+                result = func(self, token)
+                
+                # Salvar no cache se Redis disponível
+                if self.redis_client:
+                    try:
+                        tenant_dict = result.model_dump() if hasattr(result, 'model_dump') else result.dict()
+                        self.redis_client.setex(cache_key, ttl, json.dumps(tenant_dict, default=str))
+                    except Exception:
+                        # Se cache falhar, continuar sem cache
+                        pass
+                
+                return result
+                
+            except Exception:
+                # Se qualquer coisa falhar, executar função original
+                return func(self, token)
+                
+        return wrapper
+    return decorator
 
 
 class TenantResolver:
@@ -33,7 +89,13 @@ class TenantResolver:
     
     def __init__(self):
         self.supabase = get_supabase()
+        try:
+            self.redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        except Exception as e:
+            # Se Redis não estiver disponível, continuar sem cache
+            self.redis_client = None
     
+    @cache_tenant(ttl=300)
     def get_tenant_from_jwt(self, token: str) -> Tenant:
         """
         Resolve tenant a partir de JWT token.
@@ -156,6 +218,21 @@ class TenantResolver:
             )
         
         return Tenant.model_validate(tenant_data)
+    
+    def invalidate_tenant_cache(self, user_id: str) -> None:
+        """
+        Invalida o cache de tenant para um usuário específico.
+        
+        Args:
+            user_id: ID do usuário para invalidar cache
+        """
+        if self.redis_client:
+            try:
+                cache_key = f"tenant:resolution:{user_id}"
+                self.redis_client.delete(cache_key)
+            except Exception:
+                # Se falhar, continuar silenciosamente
+                pass
 
 
 # Instância global para uso em dependências

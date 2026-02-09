@@ -5,8 +5,13 @@ interface ProtectedRouteProps {
     redirectPath?: string;
 }
 
-const ProtectedRoute = ({ redirectPath = 'https://slimquality.com.br/login' }: ProtectedRouteProps) => {
+const ProtectedRoute = ({ redirectPath }: ProtectedRouteProps) => {
     const { user, loading, isSubscribed } = useAuth();
+
+    // URLs configuráveis via environment variables
+    const slimQualityUrl = import.meta.env.VITE_SLIM_QUALITY_URL || 'https://slimquality.com.br';
+    const defaultRedirectPath = `${slimQualityUrl}/login`;
+    const toolsPageUrl = `${slimQualityUrl}/afiliados/dashboard/ferramentas-ia`;
 
     if (loading) {
         return (
@@ -22,15 +27,16 @@ const ProtectedRoute = ({ redirectPath = 'https://slimquality.com.br/login' }: P
     if (!user) {
         // Redirect to main panel login with returnUrl
         const currentUrl = window.location.href;
+        const loginUrl = redirectPath || defaultRedirectPath;
         // Clean redirectPath to ensure no trailing slash before appending query params
-        const cleanBaseUrl = redirectPath.replace(/\/$/, "");
+        const cleanBaseUrl = loginUrl.replace(/\/$/, "");
         window.location.href = `${cleanBaseUrl}?returnUrl=${encodeURIComponent(currentUrl)}`;
         return null;
     }
 
     if (!isSubscribed) {
         // Redirect to the tools page in the main panel to sign up
-        window.location.href = 'https://slimquality.com.br/afiliados/dashboard/ferramentas-ia';
+        window.location.href = toolsPageUrl;
         return null;
     }
 

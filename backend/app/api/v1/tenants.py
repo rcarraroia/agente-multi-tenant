@@ -6,8 +6,10 @@ from app.api import deps
 from app.schemas.tenant import Tenant, TenantCreate, TenantUpdate
 from app.services.tenant_service import TenantService
 from app.api.deps import APIResponse
+from app.core.logging import get_logger
 
 router = APIRouter()
+logger = get_logger('tenants_api')
 
 @router.post("/", response_model=APIResponse)
 def create_tenant(
@@ -25,7 +27,11 @@ def create_tenant(
         tenant = service.create_tenant(tenant_in)
         return APIResponse(data=tenant)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Erro ao criar tenant para affiliate {affiliate_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail="Erro interno do servidor. Contate o suporte se o problema persistir."
+        )
 
 @router.get("/me", response_model=APIResponse)
 def read_tenant_me(
@@ -59,4 +65,8 @@ def update_tenant_me(
         updated = service.update_tenant(tenant.id, tenant_in)
         return APIResponse(data=updated)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Erro ao atualizar tenant {tenant.id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail="Erro interno do servidor. Contate o suporte se o problema persistir."
+        )

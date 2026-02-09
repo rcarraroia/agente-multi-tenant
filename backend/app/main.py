@@ -9,6 +9,9 @@ from app.services.external_service_validator import external_service_validator
 from app.middleware.logging_middleware import LoggingMiddleware, AuditMiddleware
 
 # IMPORTAR CORS FIX PRIMEIRO
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from cors_fix import setup_cors
 
 # Configurar logging no início

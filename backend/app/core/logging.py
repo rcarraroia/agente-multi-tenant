@@ -212,30 +212,6 @@ class TenantContextFilter(logging.Filter):
         self.tenant_id = tenant_id
         self.affiliate_id = affiliate_id
         self.user_id = user_id
-    """
-    Filtro para adicionar contexto de tenant aos logs.
-    """
-    
-    def __init__(self):
-        super().__init__()
-        self.tenant_id: Optional[str] = None
-        self.affiliate_id: Optional[str] = None
-        self.user_id: Optional[str] = None
-    
-    def filter(self, record):
-        # Adicionar contexto de tenant ao record
-        record.tenant_id = getattr(self, 'tenant_id', None)
-        record.affiliate_id = getattr(self, 'affiliate_id', None)
-        record.user_id = getattr(self, 'user_id', None)
-        return True
-    
-    def set_context(self, tenant_id: Optional[str] = None, 
-                   affiliate_id: Optional[str] = None,
-                   user_id: Optional[str] = None):
-        """Define contexto atual para os logs."""
-        self.tenant_id = tenant_id
-        self.affiliate_id = affiliate_id
-        self.user_id = user_id
 
 
 class StructuredFormatter(logging.Formatter):

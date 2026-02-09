@@ -11,6 +11,7 @@ class TenantService:
         self.table = "multi_agent_tenants"
 
     def create_tenant(self, data: TenantCreate) -> Tenant:
+        """Cria tenant com funil padrão usando transação manual."""
         try:
             # Check if exists (idempotency by affiliate_id)
             existing = self.supabase.table(self.table)\
@@ -21,16 +22,28 @@ class TenantService:
             if existing.data:
                 return Tenant.model_validate(existing.data[0])
 
+            # Criar tenant
             response = self.supabase.table(self.table)\
                 .insert(data.model_dump(mode='json'))\
                 .execute()
             
+            if not response.data:
+                raise Exception("Falha ao criar tenant")
+                
             tenant = Tenant.model_validate(response.data[0])
             
-            # GAP 5: Criar funil padrão automaticamente
-            self._create_default_funnel(tenant.id)
-            
-            return tenant
+            try:
+                # Criar funil padrão automaticamente
+                self._create_default_funnel(tenant.id)
+                return tenant
+            except Exception as funnel_error:
+                # Rollback: deletar tenant criado
+                self.supabase.table(self.table)\
+                    .delete()\
+                    .eq("id", str(tenant.id))\
+                    .execute()
+                raise Exception(f"Falha ao criar funil padrão: {str(funnel_error)}")
+                
         except APIError as e:
             raise e
 

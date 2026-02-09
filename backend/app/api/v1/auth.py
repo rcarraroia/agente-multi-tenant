@@ -7,19 +7,29 @@ Provides endpoints for:
 - Security information
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import APIRouter, HTTPException, status, Request
 from pydantic import BaseModel
 from typing import Dict, Any
 
-from app.core.security import jwt_security_manager
-from app.core.exceptions import CredentialsException
-from app.core.logging import get_logger
-from app.api.deps import get_current_tenant, get_current_user_id
-from app.schemas.tenant import Tenant
-
-logger = get_logger(__name__)
+# Importações básicas primeiro
 router = APIRouter()
+
+
+
+# Tentar importações mais complexas depois
+try:
+    from app.core.security import jwt_security_manager
+    from app.core.exceptions import CredentialsException
+    from app.core.logging import get_logger
+    from app.api.deps import get_current_tenant, get_current_user_id
+    from app.schemas.tenant import Tenant
+    
+    logger = get_logger(__name__)
+    IMPORTS_OK = True
+except Exception as e:
+    logger = None
+    IMPORTS_OK = False
+    IMPORT_ERROR = str(e)
 
 # Request/Response Models
 class RefreshTokenRequest(BaseModel):
@@ -83,140 +93,11 @@ async def refresh_access_token(request: RefreshTokenRequest):
             }
         )
 
-@router.get("/token/info")
-async def get_token_info(token: str) -> TokenInfoResponse:
-    """
-    Get information about a token without validating its signature.
-    
-    Useful for debugging and token inspection.
-    Note: This does not validate the token signature.
-    """
-    try:
-        logger.debug("🔍 Solicitação de informações do token")
-        
-        token_info = jwt_security_manager.get_token_info(token)
-        
-        if "error" in token_info:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "message": "Token inválido ou malformado",
-                    "error": token_info["error"]
-                }
-            )
-        
-        return TokenInfoResponse(
-            subject=token_info.get("subject", "unknown"),
-            token_type=token_info.get("type", "unknown"),
-            issued_at=token_info.get("issued_at_readable", "unknown"),
-            expires_at=token_info.get("expires_at_readable", "unknown"),
-            is_expired=token_info.get("is_expired", True)
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"💥 Erro ao obter informações do token: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "message": "Erro interno ao processar token",
-                "error_code": "TOKEN_INFO_ERROR"
-            }
-        )
 
-@router.get("/security/info")
-async def get_security_info() -> SecurityInfoResponse:
-    """
-    Get information about the current JWT security configuration.
-    
-    Useful for security audits and configuration validation.
-    """
-    try:
-        logger.debug("🔍 Solicitação de informações de segurança")
-        
-        # Obter informações de segurança do JWTSecurityManager
-        security_warnings = []
-        
-        # Verificar se há avisos de configuração
-        from app.config import settings
-        
-        if len(settings.JWT_SECRET_KEY) < 64:
-            security_warnings.append("JWT_SECRET_KEY tem menos de 64 caracteres")
-        
-        if settings.JWT_ALGORITHM == "HS256" and len(settings.JWT_SECRET_KEY) < 32:
-            security_warnings.append("JWT_SECRET_KEY muito curto para HS256")
-        
-        return SecurityInfoResponse(
-            algorithm=settings.JWT_ALGORITHM,
-            secure_configuration=len(security_warnings) == 0,
-            supported_algorithms=jwt_security_manager.SECURE_ALGORITHMS,
-            security_warnings=security_warnings
-        )
-        
-    except Exception as e:
-        logger.error(f"💥 Erro ao obter informações de segurança: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "message": "Erro interno ao obter informações de segurança",
-                "error_code": "SECURITY_INFO_ERROR"
-            }
-        )
 
-@router.post("/security/generate-secret")
-async def generate_secure_secret(length: int = 64) -> Dict[str, str]:
-    """
-    Generate a secure JWT secret.
-    
-    WARNING: This endpoint should be disabled in production!
-    Only use during development or initial setup.
-    """
-    try:
-        from app.config import settings
-        
-        # Verificar se estamos em produção
-        if settings.ENVIRONMENT == "production":
-            logger.warning("🚨 Tentativa de gerar secret em produção")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail={
-                    "message": "Geração de secrets desabilitada em produção",
-                    "error_code": "PRODUCTION_SECURITY_BLOCK"
-                }
-            )
-        
-        if length < 32 or length > 128:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "message": "Comprimento deve estar entre 32 e 128 caracteres",
-                    "error_code": "INVALID_LENGTH"
-                }
-            )
-        
-        logger.warning("⚠️ Gerando novo secret JWT (DESENVOLVIMENTO APENAS)")
-        
-        secure_secret = jwt_security_manager.generate_secure_secret(length)
-        
-        return {
-            "secret": secure_secret,
-            "length": len(secure_secret),
-            "warning": "SALVE ESTE SECRET EM LOCAL SEGURO E CONFIGURE NO .env",
-            "environment_variable": "JWT_SECRET_KEY"
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"💥 Erro ao gerar secret: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "message": "Erro interno ao gerar secret",
-                "error_code": "SECRET_GENERATION_ERROR"
-            }
-        )
+
+
+
 
 @router.get("/debug/token")
 async def debug_token_validation(request: Request):
@@ -279,90 +160,18 @@ async def debug_token_validation(request: Request):
             "help": "Erro interno no endpoint de debug"
         }
 
-@router.get("/debug/generate-test-token")
-async def generate_test_token():
+@router.get("/debug/simple-test")
+async def simple_debug_test():
     """
-    ENDPOINT TEMPORÁRIO - Gerar token de teste com dados reais DA BEATRIZ
-    USAR APENAS PARA DEBUG - REMOVER APÓS TESTES
+    ENDPOINT SIMPLES PARA TESTAR SE AUTH ROUTER FUNCIONA
     """
-    try:
-        # DADOS CORRETOS DA BEATRIZ (usuária com acesso ao painel)
-        test_user_id = "71d06370-6757-4d35-a91f-7c2b518bc0af"
-        test_email = "bia.aguilar@hotmail.com"
-        test_name = "Beatriz Fatima Almeida Carraro"
-        
-        # Criar token Supabase-like
-        from datetime import datetime, timedelta
-        import time
-        
-        # Payload similar ao Supabase Auth
-        payload = {
-            "aud": "authenticated",
-            "exp": int(time.time()) + (24 * 60 * 60),  # 24 horas
-            "iat": int(time.time()),
-            "iss": "https://vtynmmtuvxreiwcxxlma.supabase.co/auth/v1",
-            "sub": test_user_id,
-            "email": test_email,
-            "phone": "",
-            "app_metadata": {
-                "provider": "email",
-                "providers": ["email"]
-            },
-            "user_metadata": {
-                "email": test_email,
-                "email_verified": False,
-                "phone_verified": False,
-                "sub": test_user_id
-            },
-            "role": "authenticated",
-            "aal": "aal1",
-            "amr": [{"method": "password", "timestamp": int(time.time())}],
-            "session_id": "beatriz-test-session"
-        }
-        
-        # Gerar token usando SUPABASE_JWT_SECRET
-        from app.config import settings
-        from jose import jwt
-        
-        if not settings.SUPABASE_JWT_SECRET:
-            return {
-                "error": "SUPABASE_JWT_SECRET não configurado",
-                "help": "Configure SUPABASE_JWT_SECRET no ambiente"
-            }
-        
-        token = jwt.encode(
-            payload,
-            settings.SUPABASE_JWT_SECRET,
-            algorithm="HS256"
-        )
-        
-        return {
-            "status": "success",
-            "test_token": token,
-            "user_data": {
-                "user_id": test_user_id,
-                "email": test_email,
-                "name": test_name,
-                "note": "BEATRIZ - Usuária com acesso ao painel de agentes"
-            },
-            "usage": {
-                "header": f"Authorization: Bearer {token}",
-                "test_endpoints": [
-                    "/api/v1/auth/debug/token",
-                    "/api/v1/auth/debug/tenant", 
-                    "/api/v1/whatsapp/status",
-                    "/api/v1/whatsapp/connect"
-                ]
-            },
-            "warning": "TOKEN DA BEATRIZ - REMOVER ENDPOINT APÓS DEBUG"
-        }
-        
-    except Exception as e:
-        return {
-            "status": "error",
-            "error": str(e),
-            "error_type": type(e).__name__
-        }
+    return {
+        "status": "success",
+        "message": "Auth router funcionando",
+        "timestamp": "2025-02-08"
+    }
+
+
 
 @router.get("/debug/tenant")
 async def debug_tenant_resolution(request: Request):

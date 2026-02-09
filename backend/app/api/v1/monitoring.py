@@ -11,6 +11,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 import json
 import asyncio
+import redis
 
 from app.core.logging import get_structured_logger, PerformanceLogger, AuditLogger
 from app.services.external_service_validator import external_service_validator
@@ -23,6 +24,13 @@ router = APIRouter()
 
 # Instância do monitor de consistência
 consistency_monitor = ConsistencyMonitor()
+
+# Redis client para métricas persistentes
+try:
+    redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+except Exception as e:
+    logger.warning(f"Redis não disponível para métricas: {str(e)}")
+    redis_client = None
 
 class PerformanceMetrics(BaseModel):
     """Métricas de performance do sistema."""
@@ -51,13 +59,87 @@ class ServiceMetrics(BaseModel):
     last_error: Optional[str] = None
     circuit_breaker_state: str
 
-# Armazenamento em memória para métricas (em produção, usar Redis)
-_metrics_store = {
+# Funções para gerenciar métricas no Redis
+def store_metric(key: str, value: Dict[str, Any], ttl: int = 86400):
+    """Armazena métrica no Redis com TTL de 24h."""
+    if redis_client:
+        try:
+            redis_client.hset(f"metrics:{key}", mapping={k: json.dumps(v) if isinstance(v, (dict, list)) else str(v) for k, v in value.items()})
+            redis_client.expire(f"metrics:{key}", ttl)
+        except Exception as e:
+            logger.warning(f"Erro ao armazenar métrica no Redis: {str(e)}")
+
+def get_metrics(pattern: str = "*") -> List[Dict[str, Any]]:
+    """Obtém métricas do Redis."""
+    if not redis_client:
+        return []
+    
+    try:
+        keys = redis_client.keys(f"metrics:{pattern}")
+        metrics = []
+        for key in keys:
+            data = redis_client.hgetall(key)
+            # Deserializar valores JSON
+            parsed_data = {}
+            for k, v in data.items():
+                try:
+                    parsed_data[k] = json.loads(v)
+                except (json.JSONDecodeError, TypeError):
+                    parsed_data[k] = v
+            metrics.append(parsed_data)
+        return metrics
+    except Exception as e:
+        logger.warning(f"Erro ao obter métricas do Redis: {str(e)}")
+        return []
+
+def add_to_metric_list(metric_type: str, data: Dict[str, Any], max_items: int = 1000):
+    """Adiciona item a uma lista de métricas no Redis."""
+    if not redis_client:
+        return
+    
+    try:
+        key = f"metrics:list:{metric_type}"
+        # Adicionar timestamp
+        data["timestamp"] = datetime.utcnow().isoformat()
+        
+        # Adicionar à lista
+        redis_client.lpush(key, json.dumps(data))
+        
+        # Limitar tamanho da lista
+        redis_client.ltrim(key, 0, max_items - 1)
+        
+        # Definir TTL
+        redis_client.expire(key, 86400)  # 24 horas
+        
+    except Exception as e:
+        logger.warning(f"Erro ao adicionar à lista de métricas: {str(e)}")
+
+def get_metric_list(metric_type: str, limit: int = 1000) -> List[Dict[str, Any]]:
+    """Obtém lista de métricas do Redis."""
+    if not redis_client:
+        return []
+    
+    try:
+        key = f"metrics:list:{metric_type}"
+        raw_data = redis_client.lrange(key, 0, limit - 1)
+        return [json.loads(item) for item in raw_data]
+    except Exception as e:
+        logger.warning(f"Erro ao obter lista de métricas: {str(e)}")
+        return []
+
+# Fallback para compatibilidade (caso Redis não esteja disponível)
+_metrics_store_fallback = {
     "requests": [],
     "database_queries": [],
     "external_calls": [],
     "errors": []
 }
+
+def _get_metrics_store():
+    """Retorna store de métricas (Redis ou fallback)."""
+    if redis_client:
+        return "redis"
+    return _metrics_store_fallback
 
 # Startup time para cálculo de uptime
 startup_time = datetime.utcnow()
@@ -119,11 +201,17 @@ async def get_system_metrics():
     try:
         uptime = (datetime.utcnow() - startup_time).total_seconds()
         
+        # Obter requests do Redis ou fallback
+        if redis_client:
+            requests = get_metric_list("requests", limit=1000)
+        else:
+            requests = _metrics_store_fallback["requests"]
+        
         # Calcular métricas básicas
-        total_requests = len(_metrics_store["requests"])
+        total_requests = len(requests)
         
         # Calcular tempo médio de resposta (últimas 100 requests)
-        recent_requests = _metrics_store["requests"][-100:]
+        recent_requests = requests[-100:] if requests else []
         avg_response_time = 0
         if recent_requests:
             avg_response_time = sum(r.get("duration_ms", 0) for r in recent_requests) / len(recent_requests)
@@ -167,13 +255,19 @@ async def get_services_metrics():
         # Obter status dos circuit breakers
         circuit_breakers = external_service_validator.get_circuit_breaker_status()
         
+        # Obter chamadas do Redis ou fallback
+        if redis_client:
+            external_calls = get_metric_list("external_calls", limit=1000)
+        else:
+            external_calls = _metrics_store_fallback["external_calls"]
+        
         # Calcular métricas para cada serviço
         services_metrics = []
         
         for service_name, cb_status in circuit_breakers.items():
             # Filtrar chamadas deste serviço
             service_calls = [
-                call for call in _metrics_store["external_calls"]
+                call for call in external_calls
                 if call.get("service") == service_name
             ]
             
@@ -268,16 +362,20 @@ async def record_metric(metric_type: str, data: Dict[str, Any]):
     Endpoint interno para registrar métricas de outros componentes.
     """
     try:
-        if metric_type not in _metrics_store:
-            _metrics_store[metric_type] = []
-        
-        # Adicionar timestamp
-        data["timestamp"] = datetime.utcnow().isoformat()
-        
-        # Limitar tamanho do store (manter apenas últimos 1000 registros)
-        _metrics_store[metric_type].append(data)
-        if len(_metrics_store[metric_type]) > 1000:
-            _metrics_store[metric_type] = _metrics_store[metric_type][-1000:]
+        # Usar Redis se disponível, senão fallback
+        if redis_client:
+            add_to_metric_list(metric_type, data)
+        else:
+            if metric_type not in _metrics_store_fallback:
+                _metrics_store_fallback[metric_type] = []
+            
+            # Adicionar timestamp
+            data["timestamp"] = datetime.utcnow().isoformat()
+            
+            # Limitar tamanho do store (manter apenas últimos 1000 registros)
+            _metrics_store_fallback[metric_type].append(data)
+            if len(_metrics_store_fallback[metric_type]) > 1000:
+                _metrics_store_fallback[metric_type] = _metrics_store_fallback[metric_type][-1000:]
         
         return {"message": "Métrica registrada com sucesso"}
         
@@ -297,7 +395,11 @@ async def record_metric(metric_type: str, data: Dict[str, Any]):
 
 def _calculate_request_metrics() -> Dict[str, Any]:
     """Calcula métricas de requests HTTP."""
-    requests = _metrics_store["requests"]
+    # Usar Redis se disponível, senão fallback
+    if redis_client:
+        requests = get_metric_list("requests", limit=1000)
+    else:
+        requests = _metrics_store_fallback["requests"]
     
     if not requests:
         return {
@@ -309,10 +411,17 @@ def _calculate_request_metrics() -> Dict[str, Any]:
     
     # Últimos 60 minutos
     one_hour_ago = datetime.utcnow() - timedelta(hours=1)
-    recent_requests = [
-        r for r in requests 
-        if datetime.fromisoformat(r.get("timestamp", "1970-01-01")) > one_hour_ago
-    ]
+    recent_requests = []
+    
+    for r in requests:
+        timestamp_str = r.get("timestamp", "1970-01-01")
+        try:
+            timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+            if timestamp > one_hour_ago:
+                recent_requests.append(r)
+        except (ValueError, AttributeError):
+            # Skip invalid timestamps
+            continue
     
     # Calcular métricas
     total = len(requests)
@@ -340,7 +449,11 @@ def _calculate_request_metrics() -> Dict[str, Any]:
 
 def _calculate_database_metrics() -> Dict[str, Any]:
     """Calcula métricas de banco de dados."""
-    queries = _metrics_store["database_queries"]
+    # Usar Redis se disponível, senão fallback
+    if redis_client:
+        queries = get_metric_list("database_queries", limit=1000)
+    else:
+        queries = _metrics_store_fallback["database_queries"]
     
     if not queries:
         return {
@@ -369,7 +482,11 @@ def _calculate_database_metrics() -> Dict[str, Any]:
 
 async def _calculate_external_services_metrics() -> Dict[str, Any]:
     """Calcula métricas de serviços externos."""
-    calls = _metrics_store["external_calls"]
+    # Usar Redis se disponível, senão fallback
+    if redis_client:
+        calls = get_metric_list("external_calls", limit=1000)
+    else:
+        calls = _metrics_store_fallback["external_calls"]
     
     if not calls:
         return {
@@ -419,7 +536,12 @@ async def _calculate_system_health() -> Dict[str, Any]:
             health_score -= 25
         
         # Penalizar por alta taxa de erro
-        requests = _metrics_store["requests"][-100:]  # Últimos 100 requests
+        # Usar Redis se disponível, senão fallback
+        if redis_client:
+            requests = get_metric_list("requests", limit=100)
+        else:
+            requests = _metrics_store_fallback["requests"][-100:]  # Últimos 100 requests
+            
         if requests:
             errors = sum(1 for r in requests if r.get("status_code", 200) >= 400)
             error_rate = errors / len(requests)
@@ -529,47 +651,65 @@ def _format_uptime(seconds: float) -> str:
 
 def record_request_metric(method: str, path: str, duration_ms: float, status_code: int, user_id: str = None):
     """Registra métrica de request HTTP."""
-    _metrics_store["requests"].append({
+    data = {
         "method": method,
         "path": path,
         "duration_ms": duration_ms,
         "status_code": status_code,
         "user_id": user_id,
         "timestamp": datetime.utcnow().isoformat()
-    })
+    }
     
-    # Limitar tamanho
-    if len(_metrics_store["requests"]) > 1000:
-        _metrics_store["requests"] = _metrics_store["requests"][-1000:]
+    # Usar Redis se disponível, senão fallback
+    if redis_client:
+        add_to_metric_list("requests", data)
+    else:
+        _metrics_store_fallback["requests"].append(data)
+        
+        # Limitar tamanho
+        if len(_metrics_store_fallback["requests"]) > 1000:
+            _metrics_store_fallback["requests"] = _metrics_store_fallback["requests"][-1000:]
 
 def record_database_metric(query_type: str, table: str, duration_ms: float, rows_affected: int = None):
     """Registra métrica de query de banco."""
-    _metrics_store["database_queries"].append({
+    data = {
         "query_type": query_type,
         "table": table,
         "duration_ms": duration_ms,
         "rows_affected": rows_affected,
         "timestamp": datetime.utcnow().isoformat()
-    })
+    }
     
-    # Limitar tamanho
-    if len(_metrics_store["database_queries"]) > 1000:
-        _metrics_store["database_queries"] = _metrics_store["database_queries"][-1000:]
+    # Usar Redis se disponível, senão fallback
+    if redis_client:
+        add_to_metric_list("database_queries", data)
+    else:
+        _metrics_store_fallback["database_queries"].append(data)
+        
+        # Limitar tamanho
+        if len(_metrics_store_fallback["database_queries"]) > 1000:
+            _metrics_store_fallback["database_queries"] = _metrics_store_fallback["database_queries"][-1000:]
 
 def record_external_service_metric(service: str, operation: str, duration_ms: float, success: bool, error: str = None):
     """Registra métrica de chamada para serviço externo."""
-    _metrics_store["external_calls"].append({
+    data = {
         "service": service,
         "operation": operation,
         "duration_ms": duration_ms,
         "success": success,
         "error": error,
         "timestamp": datetime.utcnow().isoformat()
-    })
+    }
     
-    # Limitar tamanho
-    if len(_metrics_store["external_calls"]) > 1000:
-        _metrics_store["external_calls"] = _metrics_store["external_calls"][-1000:]
+    # Usar Redis se disponível, senão fallback
+    if redis_client:
+        add_to_metric_list("external_calls", data)
+    else:
+        _metrics_store_fallback["external_calls"].append(data)
+        
+        # Limitar tamanho
+        if len(_metrics_store_fallback["external_calls"]) > 1000:
+            _metrics_store_fallback["external_calls"] = _metrics_store_fallback["external_calls"][-1000:]
 
 # ============================================
 # ENDPOINTS DE CONSISTÊNCIA DE DADOS

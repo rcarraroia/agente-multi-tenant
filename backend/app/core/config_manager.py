@@ -16,7 +16,6 @@ from typing import Dict, List, Optional, Tuple, Any
 from urllib.parse import urlparse
 from app.config import settings
 from app.core.logging import get_logger
-from app.core.exceptions import EntityNotFoundException
 
 logger = get_logger(__name__)
 

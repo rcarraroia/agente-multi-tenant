@@ -131,9 +131,9 @@ class ExternalServiceValidator:
         
         for service in services:
             config = CircuitBreakerConfig(
-                failure_threshold=3,
-                recovery_timeout=60,
-                request_timeout=30
+                failure_threshold=settings.CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+                recovery_timeout=settings.CIRCUIT_BREAKER_RECOVERY_TIMEOUT,
+                request_timeout=settings.CIRCUIT_BREAKER_TIMEOUT
             )
             self.circuit_breakers[service] = CircuitBreaker(service, config)
             

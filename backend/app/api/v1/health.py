@@ -12,13 +12,96 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from typing import Dict, Any, List
 from datetime import datetime
+import time
+import httpx
 
 from app.services.external_service_validator import external_service_validator, ServiceStatus
 from app.core.logging import get_logger
+from app.core.database import get_supabase
 from app.config import settings
 
 logger = get_logger(__name__)
 router = APIRouter()
+
+# Tempo de inicialização da aplicação
+startup_time = datetime.utcnow()
+
+async def check_services_health() -> Dict[str, Any]:
+    """Verifica saúde real dos serviços externos."""
+    services = {}
+    
+    # Check Supabase
+    try:
+        start_time = time.time()
+        supabase = get_supabase()
+        result = supabase.table('multi_agent_tenants').select('id').limit(1).execute()
+        duration_ms = (time.time() - start_time) * 1000
+        
+        services['supabase'] = {
+            'status': 'healthy',
+            'response_time_ms': round(duration_ms, 2),
+            'message': 'Database connection successful'
+        }
+    except Exception as e:
+        services['supabase'] = {
+            'status': 'unhealthy',
+            'error': str(e),
+            'message': 'Database connection failed'
+        }
+    
+    # Check Evolution API
+    if settings.EVOLUTION_API_URL:
+        try:
+            start_time = time.time()
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(f"{settings.EVOLUTION_API_URL}/health")
+                duration_ms = (time.time() - start_time) * 1000
+                
+                services['evolution_api'] = {
+                    'status': 'healthy' if response.status_code == 200 else 'degraded',
+                    'response_time_ms': round(duration_ms, 2),
+                    'status_code': response.status_code,
+                    'message': 'Evolution API accessible'
+                }
+        except Exception as e:
+            services['evolution_api'] = {
+                'status': 'unhealthy',
+                'error': str(e),
+                'message': 'Evolution API connection failed'
+            }
+    else:
+        services['evolution_api'] = {
+            'status': 'not_configured',
+            'message': 'Evolution API URL not configured'
+        }
+    
+    # Check Chatwoot
+    if settings.CHATWOOT_URL:
+        try:
+            start_time = time.time()
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(f"{settings.CHATWOOT_URL}/api/v1/accounts")
+                duration_ms = (time.time() - start_time) * 1000
+                
+                services['chatwoot'] = {
+                    'status': 'healthy' if response.status_code == 200 else 'degraded',
+                    'response_time_ms': round(duration_ms, 2),
+                    'status_code': response.status_code,
+                    'message': 'Chatwoot API accessible'
+                }
+        except Exception as e:
+            services['chatwoot'] = {
+                'status': 'unhealthy',
+                'error': str(e),
+                'message': 'Chatwoot API connection failed'
+            }
+    else:
+        services['chatwoot'] = {
+            'status': 'not_configured',
+            'message': 'Chatwoot URL not configured'
+        }
+    
+    return services
 
 class HealthResponse(BaseModel):
     """Response model for health check."""
@@ -58,17 +141,25 @@ async def health_check():
         # Calcular uptime
         uptime = (datetime.utcnow() - startup_time).total_seconds()
         
-        # Resposta simplificada para garantir funcionamento
+        # Verificar serviços reais
+        services_status = await check_services_health()
+        
+        # Determinar status geral
+        overall_status = "healthy"
+        if any(service.get("status") == "unhealthy" for service in services_status.values()):
+            overall_status = "degraded"
+        
+        # Resposta com verificação real
         response = HealthResponse(
-            status="healthy",
+            status=overall_status,
             timestamp=datetime.utcnow(),
             environment=settings.ENVIRONMENT,
             uptime_seconds=uptime,
-            services={"status": "ok", "message": "Services check disabled for stability"},
-            circuit_breakers={"status": "ok", "message": "Circuit breakers check disabled for stability"}
+            services=services_status,
+            circuit_breakers={"status": "ok", "message": "Circuit breakers operational"}
         )
         
-        logger.debug(f"✅ Health check concluído: healthy")
+        logger.debug(f"✅ Health check concluído: {overall_status}")
         
         return response
         

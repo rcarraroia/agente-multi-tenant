@@ -5,7 +5,8 @@
  * configuração e monitoramento de agentes IA.
  */
 
-import { config } from '../config/environment';
+import api from './api';
+import { supabase } from '../lib/supabase';
 
 export interface AgentActivationRequest {
   agentName: string;
@@ -50,69 +51,49 @@ export interface ApiError {
 }
 
 class AgentService {
-  private baseUrl: string;
-
-  constructor() {
-    this.baseUrl = config.apiUrl;
-  }
-
   private async makeRequest<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: {
+      method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+      data?: any;
+    } = {}
   ): Promise<T> {
-    const url = `${this.baseUrl}${endpoint}`;
-    
-    // Obter token JWT do localStorage ou context
-    const token = this.getAuthToken();
-    
-    const defaultHeaders: HeadersInit = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    };
-
-    if (token) {
-      defaultHeaders['Authorization'] = `Bearer ${token}`;
-    }
-
-    const config: RequestInit = {
-      ...options,
-      headers: {
-        ...defaultHeaders,
-        ...options.headers,
-      },
-    };
-
     try {
-      const response = await fetch(url, config);
+      const response = await api.request({
+        url: endpoint,
+        method: options.method || 'GET',
+        data: options.data,
+      });
       
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+      return response.data;
+    } catch (error: any) {
+      // Tratar erros do axios
+      if (error.response) {
+        // Erro HTTP com resposta do servidor
+        const errorData = error.response.data;
         throw new Error(
           errorData.message || 
           errorData.detail || 
-          `HTTP ${response.status}: ${response.statusText}`
+          `HTTP ${error.response.status}: ${error.response.statusText}`
         );
-      }
-
-      // Handle empty responses
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        return await response.json();
+      } else if (error.request) {
+        // Erro de rede
+        throw new Error('Erro de rede ou servidor indisponível');
       } else {
-        return {} as T;
+        // Outro tipo de erro
+        throw new Error(error.message || 'Erro desconhecido');
       }
-    } catch (error) {
-      if (error instanceof Error) {
-        throw error;
-      }
-      throw new Error('Erro de rede ou servidor indisponível');
     }
   }
 
-  private getAuthToken(): string | null {
-    // Em um app real, isso viria do context de autenticação
-    // Por enquanto, vamos simular ou usar localStorage
-    return localStorage.getItem('auth_token') || null;
+  private async getAuthToken(): Promise<string | null> {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      return session?.access_token || null;
+    } catch (error) {
+      console.error('Erro ao obter token:', error);
+      return null;
+    }
   }
 
   /**
@@ -121,7 +102,7 @@ class AgentService {
   async activateAgent(data: AgentActivationRequest): Promise<AgentActivationResponse> {
     return this.makeRequest<AgentActivationResponse>('/agent/activate', {
       method: 'POST',
-      body: JSON.stringify(data),
+      data,
     });
   }
 
@@ -131,7 +112,7 @@ class AgentService {
   async deactivateAgent(reason: string = 'Desativado pelo usuário'): Promise<void> {
     return this.makeRequest<void>('/agent/deactivate', {
       method: 'POST',
-      body: JSON.stringify({ reason }),
+      data: { reason },
     });
   }
 
@@ -175,7 +156,7 @@ class AgentService {
   }): Promise<void> {
     return this.makeRequest('/agent/config', {
       method: 'PUT',
-      body: JSON.stringify(config),
+      data: config,
     });
   }
 

@@ -8,6 +8,7 @@ interface AuthContextType {
     session: Session | null;
     loading: boolean;
     isSubscribed: boolean;
+    logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -15,6 +16,7 @@ const AuthContext = createContext<AuthContextType>({
     session: null,
     loading: true,
     isSubscribed: false,
+    logout: async () => {},
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -84,8 +86,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     };
 
+    const logout = async () => {
+        try {
+            // 1. Sign out from Supabase
+            await supabase.auth.signOut();
+            
+            // 2. Clear localStorage
+            localStorage.clear();
+            
+            // 3. Clear API authorization header
+            delete api.defaults.headers.common['Authorization'];
+            
+            // 4. Reset state
+            setUser(null);
+            setSession(null);
+            setIsSubscribed(false);
+            
+            // 5. Redirect to login
+            const loginUrl = `${import.meta.env.VITE_SLIM_QUALITY_URL || 'https://slimquality.com.br'}/login`;
+            window.location.href = loginUrl;
+            
+        } catch (error) {
+            console.error('Erro no logout:', error);
+            // Mesmo com erro, limpar estado local e redirecionar
+            localStorage.clear();
+            delete api.defaults.headers.common['Authorization'];
+            setUser(null);
+            setSession(null);
+            setIsSubscribed(false);
+            
+            const loginUrl = `${import.meta.env.VITE_SLIM_QUALITY_URL || 'https://slimquality.com.br'}/login`;
+            window.location.href = loginUrl;
+        }
+    };
+
     return (
-        <AuthContext.Provider value={{ user, session, loading, isSubscribed }}>
+        <AuthContext.Provider value={{ user, session, loading, isSubscribed, logout }}>
             {children}
         </AuthContext.Provider>
     );

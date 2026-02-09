@@ -86,14 +86,24 @@ class SubscriptionSynchronizer:
             
             logger.info(f"📊 Encontrados {len(affiliate_ids)} afiliados para sincronizar")
             
-            # 2. Processar em lotes
+            # 2. Processar em lotes com queries otimizadas
             for i in range(0, len(affiliate_ids), config.batch_size):
                 batch = affiliate_ids[i:i + config.batch_size]
                 logger.debug(f"🔄 Processando lote {i//config.batch_size + 1}: {len(batch)} afiliados")
                 
+                # OTIMIZAÇÃO: Buscar todos os dados do lote de uma vez (3 queries ao invés de N*3)
+                batch_data = await self._get_batch_data(batch)
+                
                 for affiliate_id in batch:
                     try:
-                        sync_result = await self._synchronize_affiliate(affiliate_id, config)
+                        # Usar dados já carregados do batch
+                        service_data = batch_data["services"].get(affiliate_id)
+                        subscription_data = batch_data["subscriptions"].get(affiliate_id)
+                        tenant_data = batch_data["tenants"].get(affiliate_id)
+                        
+                        sync_result = await self._synchronize_affiliate_with_data(
+                            affiliate_id, config, service_data, subscription_data, tenant_data
+                        )
                         
                         if sync_result["success"]:
                             result.successful_syncs += 1
@@ -286,6 +296,142 @@ class SubscriptionSynchronizer:
         except Exception as e:
             logger.error(f"💥 Erro ao obter afiliados: {str(e)}")
             return []
+
+    async def _get_batch_data(self, affiliate_ids: List[UUID]) -> Dict[str, Dict[UUID, Dict[str, Any]]]:
+        """
+        Busca dados de múltiplos afiliados em batch (3 queries ao invés de N*3).
+        
+        Args:
+            affiliate_ids: Lista de IDs dos afiliados
+            
+        Returns:
+            Dict com services, subscriptions e tenants indexados por affiliate_id
+        """
+        logger.debug(f"📊 Buscando dados em batch para {len(affiliate_ids)} afiliados")
+        
+        # Converter UUIDs para strings para as queries
+        affiliate_ids_str = [str(aid) for aid in affiliate_ids]
+        
+        batch_data = {
+            "services": {},
+            "subscriptions": {},
+            "tenants": {}
+        }
+        
+        try:
+            # Query 1: Buscar todos os services de uma vez
+            logger.debug("🔍 Buscando affiliate_services em batch...")
+            services_response = self.supabase.table(self.services_table)\
+                .select("*")\
+                .in_("affiliate_id", affiliate_ids_str)\
+                .eq("service_type", "agente_ia")\
+                .order("created_at", desc=True)\
+                .execute()
+            
+            # Indexar por affiliate_id (manter apenas o mais recente por afiliado)
+            for service in services_response.data:
+                affiliate_id = UUID(service["affiliate_id"])
+                if affiliate_id not in batch_data["services"]:
+                    batch_data["services"][affiliate_id] = service
+            
+            logger.debug(f"✅ Encontrados {len(batch_data['services'])} services")
+            
+            # Query 2: Buscar todas as subscriptions de uma vez
+            logger.debug("🔍 Buscando multi_agent_subscriptions em batch...")
+            subscriptions_response = self.supabase.table(self.subscriptions_table)\
+                .select("*")\
+                .in_("affiliate_id", affiliate_ids_str)\
+                .order("created_at", desc=True)\
+                .execute()
+            
+            # Indexar por affiliate_id (manter apenas o mais recente por afiliado)
+            for subscription in subscriptions_response.data:
+                affiliate_id = UUID(subscription["affiliate_id"])
+                if affiliate_id not in batch_data["subscriptions"]:
+                    batch_data["subscriptions"][affiliate_id] = subscription
+            
+            logger.debug(f"✅ Encontradas {len(batch_data['subscriptions'])} subscriptions")
+            
+            # Query 3: Buscar todos os tenants de uma vez
+            logger.debug("🔍 Buscando multi_agent_tenants em batch...")
+            tenants_response = self.supabase.table(self.tenants_table)\
+                .select("*")\
+                .in_("affiliate_id", affiliate_ids_str)\
+                .execute()
+            
+            # Indexar por affiliate_id
+            for tenant in tenants_response.data:
+                affiliate_id = UUID(tenant["affiliate_id"])
+                batch_data["tenants"][affiliate_id] = tenant
+            
+            logger.debug(f"✅ Encontrados {len(batch_data['tenants'])} tenants")
+            
+            logger.debug(f"📊 Batch data carregado: {len(batch_data['services'])} services, {len(batch_data['subscriptions'])} subscriptions, {len(batch_data['tenants'])} tenants")
+            
+            return batch_data
+            
+        except Exception as e:
+            logger.error(f"💥 Erro ao buscar dados em batch: {str(e)}")
+            # Retornar estrutura vazia em caso de erro
+            return {"services": {}, "subscriptions": {}, "tenants": {}}
+
+    async def _synchronize_affiliate_with_data(
+        self, 
+        affiliate_id: UUID, 
+        config: SubscriptionSyncConfig,
+        service_data: Optional[Dict[str, Any]],
+        subscription_data: Optional[Dict[str, Any]],
+        tenant_data: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Sincroniza dados de um afiliado específico usando dados já carregados.
+        
+        Args:
+            affiliate_id: ID do afiliado
+            config: Configuração da sincronização
+            service_data: Dados do affiliate_services (já carregados)
+            subscription_data: Dados do multi_agent_subscriptions (já carregados)
+            tenant_data: Dados do multi_agent_tenants (já carregados)
+            
+        Returns:
+            Dict com resultado da sincronização
+        """
+        logger.debug(f"🔄 Sincronizando afiliado {affiliate_id} com dados pré-carregados")
+        
+        result = {
+            "success": False,
+            "conflicts": [],
+            "actions_taken": [],
+            "errors": []
+        }
+        
+        try:
+            # 1. Identificar conflitos usando dados já carregados
+            conflicts = await self._identify_conflicts(service_data, subscription_data)
+            result["conflicts"] = conflicts
+            
+            # 2. Resolver conflitos se configurado
+            if config.resolve_conflicts_automatically and conflicts:
+                resolution_actions = await self._resolve_conflicts(
+                    affiliate_id, conflicts, config, dry_run=config.dry_run
+                )
+                result["actions_taken"].extend(resolution_actions)
+            
+            # 3. Criar tenant se necessário
+            if config.create_missing_tenants and not tenant_data and subscription_data:
+                if not config.dry_run:
+                    tenant_action = await self._create_missing_tenant(affiliate_id, subscription_data)
+                    result["actions_taken"].append(tenant_action)
+                else:
+                    result["actions_taken"].append(f"[DRY RUN] Criaria tenant para afiliado {affiliate_id}")
+            
+            result["success"] = True
+            
+        except Exception as e:
+            logger.error(f"💥 Erro na sincronização do afiliado {affiliate_id}: {str(e)}")
+            result["errors"].append(str(e))
+        
+        return result
 
     async def _synchronize_affiliate(self, affiliate_id: UUID, config: SubscriptionSyncConfig) -> Dict[str, Any]:
         """Sincroniza dados de um afiliado específico."""
@@ -581,8 +727,39 @@ class SubscriptionSynchronizer:
 
     async def _update_subscription_from_service(self, affiliate_id: UUID, conflict: SubscriptionConflict):
         """Atualiza multi_agent_subscriptions com valor do service."""
-        # Implementação similar, mas atualizando a tabela de subscriptions
-        logger.debug(f"🔄 Atualizaria subscription para {affiliate_id} (não implementado)")
+        logger.info(f"🔄 Sincronizando service → subscription para afiliado {affiliate_id}")
+        
+        try:
+            # Obter dados do service (fonte primária)
+            service_data = conflict.service_data
+            subscription_data = conflict.subscription_data
+            
+            # Preparar dados para atualização
+            updates = {
+                'status': service_data.get('status'),
+                'expires_at': service_data.get('expires_at'),
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            }
+            
+            # Remover valores None
+            updates = {k: v for k, v in updates.items() if v is not None}
+            
+            # Executar update no Supabase
+            result = self.supabase.table('multi_agent_subscriptions')\
+                .update(updates)\
+                .eq('affiliate_id', str(affiliate_id))\
+                .execute()
+            
+            if result.data:
+                logger.info(f"✅ Subscription {subscription_data.get('id')} atualizada com dados do service")
+                logger.info(f"   Status: {updates.get('status')}")
+                logger.info(f"   Expires: {updates.get('expires_at')}")
+            else:
+                logger.warning(f"⚠️ Nenhuma subscription encontrada para atualizar (affiliate: {affiliate_id})")
+                
+        except Exception as e:
+            logger.error(f"💥 Erro ao atualizar subscription do service: {str(e)}")
+            raise
 
     async def _create_missing_tenant(self, affiliate_id: UUID, subscription_data: Dict[str, Any]) -> str:
         """Cria tenant faltante para um afiliado."""

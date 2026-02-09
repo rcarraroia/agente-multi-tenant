@@ -114,7 +114,7 @@ def get_current_affiliate_id(
             error_type="database_error"
         )
 
-def check_affiliate_subscription(affiliate_id: UUID) -> bool:
+async def check_affiliate_subscription(affiliate_id: UUID) -> bool:
     """
     Checks if the affiliate has an active subscription using unified subscription logic.
     
@@ -125,17 +125,8 @@ def check_affiliate_subscription(affiliate_id: UUID) -> bool:
         # Usar SubscriptionSynchronizer para obter dados unificados
         synchronizer = SubscriptionSynchronizer()
         
-        # Executar de forma síncrona (FastAPI permite)
-        import asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        try:
-            unified_subscription = loop.run_until_complete(
-                synchronizer.get_unified_subscription(affiliate_id)
-            )
-        finally:
-            loop.close()
+        # Executar de forma assíncrona nativa
+        unified_subscription = await synchronizer.get_unified_subscription(affiliate_id)
         
         # Verificar se há assinatura ativa
         has_subscription = False
@@ -185,7 +176,7 @@ def check_affiliate_subscription(affiliate_id: UUID) -> bool:
         
         return has_subscription
 
-def get_current_tenant(
+async def get_current_tenant(
     token: Annotated[str, Depends(oauth2_scheme)]
 ) -> Tenant:
     """
@@ -224,7 +215,7 @@ def get_current_tenant(
         )
         
         # 4. Verificar assinatura ativa usando SubscriptionSynchronizer
-        if not check_affiliate_subscription(UUID(tenant.affiliate_id)):
+        if not await check_affiliate_subscription(UUID(tenant.affiliate_id)):
             logger.warning(f"🚨 Assinatura inativa para tenant {tenant.id} (afiliado: {tenant.affiliate_id})")
             raise PermissionDeniedException(
                 detail="Assinatura do Agente IA inativa ou expirada",
@@ -248,8 +239,8 @@ def get_current_tenant(
         
         log_tenant_resolution(
             user_id=user_id,
-            affiliate_id=UUID("00000000-0000-0000-0000-000000000000"),  # Placeholder para erro
-            tenant_id=UUID("00000000-0000-0000-0000-000000000000"),  # Placeholder para erro
+            affiliate_id=None,  # Não disponível em caso de erro
+            tenant_id=None,     # Não disponível em caso de erro
             success=False,
             error=f"{error_code}: {str(e)}"
         )
@@ -289,8 +280,8 @@ def get_tenant_context(request: Request) -> Tenant:
         # Log de erro
         log_tenant_resolution(
             user_id="from_request",
-            affiliate_id=UUID("00000000-0000-0000-0000-000000000000"),
-            tenant_id=UUID("00000000-0000-0000-0000-000000000000"),
+            affiliate_id=None,  # Não disponível em caso de erro
+            tenant_id=None,     # Não disponível em caso de erro
             success=False,
             error=str(e)
         )
