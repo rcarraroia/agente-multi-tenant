@@ -7,7 +7,7 @@ Provides endpoints for:
 - Security information
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
 from typing import Dict, Any
@@ -15,6 +15,8 @@ from typing import Dict, Any
 from app.core.security import jwt_security_manager
 from app.core.exceptions import CredentialsException
 from app.core.logging import get_logger
+from app.api.deps import get_current_tenant, get_current_user_id
+from app.schemas.tenant import Tenant
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -215,3 +217,95 @@ async def generate_secure_secret(length: int = 64) -> Dict[str, str]:
                 "error_code": "SECRET_GENERATION_ERROR"
             }
         )
+
+@router.get("/debug/token")
+async def debug_token_validation(request: Request):
+    """
+    DEBUG ENDPOINT - Testar validação de token
+    REMOVER EM PRODUÇÃO!
+    """
+    try:
+        from app.config import settings
+        
+        # Só permitir em desenvolvimento
+        if settings.ENVIRONMENT == "production":
+            raise HTTPException(status_code=404, detail="Not found")
+        
+        # Extrair token do header
+        authorization = request.headers.get("Authorization")
+        
+        if not authorization:
+            return {
+                "error": "No Authorization header",
+                "headers": dict(request.headers)
+            }
+        
+        if not authorization.startswith("Bearer "):
+            return {
+                "error": "Invalid Authorization format",
+                "authorization": authorization
+            }
+        
+        token = authorization.replace("Bearer ", "")
+        
+        # Tentar validar token
+        try:
+            payload = jwt_security_manager.verify_token(token)
+            
+            return {
+                "status": "success",
+                "token_valid": True,
+                "payload": payload,
+                "user_id": payload.get("sub"),
+                "token_type": payload.get("type", "unknown"),
+                "audience": payload.get("aud", "unknown")
+            }
+            
+        except Exception as token_error:
+            return {
+                "status": "token_error",
+                "token_valid": False,
+                "error": str(token_error),
+                "token_preview": token[:50] + "..." if len(token) > 50 else token
+            }
+        
+    except Exception as e:
+        return {
+            "status": "debug_error",
+            "error": str(e)
+        }
+
+@router.get("/debug/tenant")
+async def debug_tenant_resolution(
+    user_id: str = Depends(get_current_user_id),
+    tenant: Tenant = Depends(get_current_tenant)
+):
+    """
+    DEBUG ENDPOINT - Testar resolução de tenant
+    REMOVER EM PRODUÇÃO!
+    """
+    try:
+        from app.config import settings
+        
+        # Só permitir em desenvolvimento
+        if settings.ENVIRONMENT == "production":
+            raise HTTPException(status_code=404, detail="Not found")
+        
+        return {
+            "status": "success",
+            "user_id": user_id,
+            "tenant": {
+                "id": tenant.id,
+                "affiliate_id": tenant.affiliate_id,
+                "status": tenant.status,
+                "agent_name": tenant.agent_name,
+                "whatsapp_status": tenant.whatsapp_status
+            }
+        }
+        
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e),
+            "error_type": type(e).__name__
+        }
