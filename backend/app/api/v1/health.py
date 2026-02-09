@@ -17,7 +17,7 @@ import httpx
 
 from app.services.external_service_validator import external_service_validator, ServiceStatus
 from app.core.logging import get_logger
-from app.core.database import get_supabase
+from app.db.supabase import get_supabase
 from app.config import settings
 
 logger = get_logger(__name__)
