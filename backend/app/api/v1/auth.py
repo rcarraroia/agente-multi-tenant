@@ -438,34 +438,3 @@ async def debug_tenant_resolution(request: Request):
             "error_type": type(e).__name__,
             "help": "Erro interno no endpoint de debug tenant"
         }
-        except Exception as tenant_error:
-            # Se falhar, tentar pelo menos validar o token
-            try:
-                payload = jwt_security_manager.verify_token(token)
-                user_id = payload.get("sub")
-                
-                return {
-                    "status": "tenant_resolution_failed",
-                    "token_valid": True,
-                    "user_id": user_id,
-                    "tenant_error": str(tenant_error),
-                    "tenant_error_type": type(tenant_error).__name__,
-                    "help": "Token válido mas falha na resolução de tenant"
-                }
-                
-            except Exception as token_error:
-                return {
-                    "status": "token_and_tenant_failed",
-                    "token_valid": False,
-                    "token_error": str(token_error),
-                    "tenant_error": str(tenant_error),
-                    "help": "Falha tanto na validação do token quanto na resolução do tenant"
-                }
-        
-    except Exception as e:
-        return {
-            "status": "debug_endpoint_error",
-            "error": str(e),
-            "error_type": type(e).__name__,
-            "help": "Erro interno no endpoint de debug tenant"
-        }
