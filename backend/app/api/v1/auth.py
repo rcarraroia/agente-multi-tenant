@@ -222,28 +222,26 @@ async def generate_secure_secret(length: int = 64) -> Dict[str, str]:
 async def debug_token_validation(request: Request):
     """
     DEBUG ENDPOINT - Testar validação de token
-    REMOVER EM PRODUÇÃO!
+    SEMPRE DISPONÍVEL PARA DEBUG
     """
     try:
-        from app.config import settings
-        
-        # Só permitir em desenvolvimento
-        if settings.ENVIRONMENT == "production":
-            raise HTTPException(status_code=404, detail="Not found")
-        
         # Extrair token do header
         authorization = request.headers.get("Authorization")
         
         if not authorization:
             return {
+                "status": "no_auth_header",
                 "error": "No Authorization header",
-                "headers": dict(request.headers)
+                "available_headers": list(request.headers.keys()),
+                "help": "Adicione header: Authorization: Bearer <seu_token>"
             }
         
         if not authorization.startswith("Bearer "):
             return {
+                "status": "invalid_auth_format",
                 "error": "Invalid Authorization format",
-                "authorization": authorization
+                "authorization_received": authorization[:50] + "..." if len(authorization) > 50 else authorization,
+                "help": "Use formato: Bearer <token>"
             }
         
         token = authorization.replace("Bearer ", "")
@@ -258,54 +256,100 @@ async def debug_token_validation(request: Request):
                 "payload": payload,
                 "user_id": payload.get("sub"),
                 "token_type": payload.get("type", "unknown"),
-                "audience": payload.get("aud", "unknown")
+                "audience": payload.get("aud", "unknown"),
+                "expires_at": payload.get("exp"),
+                "issued_at": payload.get("iat")
             }
             
         except Exception as token_error:
             return {
-                "status": "token_error",
+                "status": "token_validation_failed",
                 "token_valid": False,
                 "error": str(token_error),
-                "token_preview": token[:50] + "..." if len(token) > 50 else token
+                "error_type": type(token_error).__name__,
+                "token_preview": token[:50] + "..." if len(token) > 50 else token,
+                "help": "Verifique se o token é válido e não expirou"
             }
         
     except Exception as e:
         return {
-            "status": "debug_error",
-            "error": str(e)
+            "status": "debug_endpoint_error",
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "help": "Erro interno no endpoint de debug"
         }
 
 @router.get("/debug/tenant")
-async def debug_tenant_resolution(
-    user_id: str = Depends(get_current_user_id),
-    tenant: Tenant = Depends(get_current_tenant)
-):
+async def debug_tenant_resolution(request: Request):
     """
     DEBUG ENDPOINT - Testar resolução de tenant
-    REMOVER EM PRODUÇÃO!
+    SEMPRE DISPONÍVEL PARA DEBUG
     """
     try:
-        from app.config import settings
+        # Extrair token do header
+        authorization = request.headers.get("Authorization")
         
-        # Só permitir em desenvolvimento
-        if settings.ENVIRONMENT == "production":
-            raise HTTPException(status_code=404, detail="Not found")
-        
-        return {
-            "status": "success",
-            "user_id": user_id,
-            "tenant": {
-                "id": tenant.id,
-                "affiliate_id": tenant.affiliate_id,
-                "status": tenant.status,
-                "agent_name": tenant.agent_name,
-                "whatsapp_status": tenant.whatsapp_status
+        if not authorization:
+            return {
+                "status": "no_auth_header",
+                "error": "No Authorization header for tenant resolution",
+                "help": "Adicione header: Authorization: Bearer <seu_token>"
             }
-        }
+        
+        if not authorization.startswith("Bearer "):
+            return {
+                "status": "invalid_auth_format", 
+                "error": "Invalid Authorization format",
+                "help": "Use formato: Bearer <token>"
+            }
+        
+        token = authorization.replace("Bearer ", "")
+        
+        # Tentar resolver tenant manualmente
+        try:
+            from app.core.tenant_resolver import get_tenant_from_jwt
+            tenant = get_tenant_from_jwt(token)
+            
+            return {
+                "status": "success",
+                "tenant_resolution": "successful",
+                "tenant": {
+                    "id": tenant.id,
+                    "affiliate_id": tenant.affiliate_id,
+                    "status": tenant.status,
+                    "agent_name": tenant.agent_name,
+                    "whatsapp_status": tenant.whatsapp_status
+                }
+            }
+            
+        except Exception as tenant_error:
+            # Se falhar, tentar pelo menos validar o token
+            try:
+                payload = jwt_security_manager.verify_token(token)
+                user_id = payload.get("sub")
+                
+                return {
+                    "status": "tenant_resolution_failed",
+                    "token_valid": True,
+                    "user_id": user_id,
+                    "tenant_error": str(tenant_error),
+                    "tenant_error_type": type(tenant_error).__name__,
+                    "help": "Token válido mas falha na resolução de tenant"
+                }
+                
+            except Exception as token_error:
+                return {
+                    "status": "token_and_tenant_failed",
+                    "token_valid": False,
+                    "token_error": str(token_error),
+                    "tenant_error": str(tenant_error),
+                    "help": "Falha tanto na validação do token quanto na resolução do tenant"
+                }
         
     except Exception as e:
         return {
-            "status": "error",
+            "status": "debug_endpoint_error",
             "error": str(e),
-            "error_type": type(e).__name__
+            "error_type": type(e).__name__,
+            "help": "Erro interno no endpoint de debug tenant"
         }
