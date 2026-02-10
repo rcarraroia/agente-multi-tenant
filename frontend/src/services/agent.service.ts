@@ -86,15 +86,7 @@ class AgentService {
     }
   }
 
-  private async getAuthToken(): Promise<string | null> {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      return session?.access_token || null;
-    } catch (error) {
-      console.error('Erro ao obter token:', error);
-      return null;
-    }
-  }
+
 
   /**
    * Ativa um agente IA para o afiliado atual.
