@@ -4,7 +4,7 @@ import { getTenantSlug } from '../lib/tenant';
 import { supabase } from '../lib/supabase';
 
 const api = axios.create({
-    baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1',
+    baseURL: import.meta.env.VITE_API_URL || 'https://slimquality-agentes-multi-tenant.wpjtfd.easypanel.host/api/v1',
     headers: {
         'Content-Type': 'application/json',
     },
